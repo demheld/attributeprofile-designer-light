@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        GIT_REPO: ${GIT_REPO}
+        GIT_REPO: ${GIT_REPO:-https://github.com/demheld/attributeprofile-designer-light.git}
         GIT_REF: ${GIT_REF:-main}
     image: formulardesigner-light:latest
     ports:
