@@ -259,8 +259,12 @@ function buildAuthServiceUrl(rawBaseUrl, application = "auth-service", path = "/
 
   try {
     const parsed = new URL(value);
-    const params = new URLSearchParams({ application, path });
-    return `${parsed.origin}/authenticate/start?${params.toString()}`;
+    const params = new URLSearchParams({
+      application: "formulardesigner",
+      path: "portal",
+      lang: "DE",
+    });
+    return `${parsed.origin}/auth-service/authenticate/start?${params.toString()}`;
   } catch {
     return "";
   }
