@@ -130,6 +130,23 @@ button.secondary {
 
 button.secondary:hover { background: #dbeafe; }
 
+.input-actions {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+button.btn-green {
+  background: #15803d;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(21, 128, 61, 0.25);
+}
+
+button.btn-green:hover {
+  background: #166534;
+}
+
 /* ── Status banner ────────────────────────────────────────────────────────── */
 .status-banner {
   border-radius: 10px;

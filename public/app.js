@@ -3,6 +3,8 @@ import { createSdapiClient } from "/js/sdapi-client.js";
 // -- DOM refs -----------------------------------------------------------------
 const mainForm = document.getElementById("mainForm");
 const loadBtn = document.getElementById("loadBtn");
+const authServiceBtn = document.getElementById("authServiceBtn");
+const sampleProfileBtn = document.getElementById("sampleProfileBtn");
 const resetBtn = document.getElementById("resetBtn");
 const statusBanner = document.getElementById("statusBanner");
 const inputSection = document.getElementById("inputSection");
@@ -236,6 +238,18 @@ function restoreFormFromStorage() {
   if (nullProfileObjId) document.getElementById("nullProfileObjId").value = nullProfileObjId;
 
   return { token, baseUrl };
+}
+
+function buildAuthServiceUrl(rawBaseUrl) {
+  const value = String(rawBaseUrl || "").trim();
+  if (!value) return "";
+
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}/auth-service`;
+  } catch {
+    return "";
+  }
 }
 
 // -- Auth flow ------------------------------------------------------------------
@@ -1036,6 +1050,31 @@ resetBtn.addEventListener("click", () => {
   inputSection.classList.remove("hidden");
   hideStatus();
 });
+
+if (authServiceBtn) {
+  authServiceBtn.addEventListener("click", () => {
+    const baseUrlInput = document.getElementById("baseUrl");
+    const authUrl = buildAuthServiceUrl(baseUrlInput?.value);
+    if (!authUrl) {
+      showStatus("Bitte zuerst eine gueltige Base URL eingeben.", "warning");
+      return;
+    }
+    saveFormToStorage();
+    window.open(authUrl, "_blank", "noopener");
+    showCenterNotice("Auth-Service in neuem Tab geoeffnet.", "info", 1600);
+  });
+}
+
+if (sampleProfileBtn) {
+  sampleProfileBtn.addEventListener("click", () => {
+    const objInput = document.getElementById("objId");
+    const nullObjInput = document.getElementById("nullProfileObjId");
+    if (objInput) objInput.value = "31020273396";
+    if (nullObjInput) nullObjInput.value = "31027726487";
+    saveFormToStorage();
+    showCenterNotice("Beispielattributprofile Werte wurden eingetragen.", "info", 1700);
+  });
+}
 
 // -- Escape HTML ----------------------------------------------------------------
 function esc(val) {
