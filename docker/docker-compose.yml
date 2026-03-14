@@ -1,0 +1,15 @@
+services:
+  formulardesigner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GIT_REPO: ${GIT_REPO}
+        GIT_REF: ${GIT_REF:-main}
+    image: formulardesigner-light:latest
+    ports:
+      - "5174:5174"
+    environment:
+      NODE_ENV: production
+      PORT: 5174
+    restart: unless-stopped

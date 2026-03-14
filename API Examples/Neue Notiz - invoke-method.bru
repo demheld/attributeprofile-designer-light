@@ -1,0 +1,39 @@
+meta {
+  name: Neue Notiz - invoke-method
+  type: http
+  seq: 19
+}
+
+put {
+  url: https://p-p.portal.tie.ch/rest2/sdapi/0.1/invoke-method
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJUSUUiLCJzdWIiOiJUSUVCT1IiLCJqdGkiOiI4NjkzNjEzYi0xZTMwLTQ4MzEtYTc1Mi05NDhjNzliZTc4OGMiLCJpYXQiOjE3NzI3OTk4NzksImF1dGhQcm92aWRlciI6IklFTkdJTkUiLCIyZmEiOiJTTVNfTVRBTiIsImV4cCI6MTc3Mjg0MzA3OX0.lOmvnC7RyKWCDXXlPos3uyjLPj55k6iZJsONhheZRNRofg4KbX5SivuQ3iZSUn5-VkHZbMGHEflG9WHobp4Ql_tVTIk0BxPUokYfX97_Xsi9JOIYJuyDnTq1mTZxYNbLqYVd13CPdfdPeWXv-4e0HZWtv5ZQaUC_SoFGgtGa1U_GoEC-inUFiE4llBoZfC99Pkhbh292f8gvJ8wPwtSM3sCnN-VYFcPkMad-rEt_qxz6rKk5DR6pSw1CChAf3n5Kmil7LLYnpslqXdG0AiZRBMhuAMYyignXOdDzJFfaPBE0Moe17zUaLLnJjpUq3pIqjRyoZg9n0-5DQrMXRElzI1vRYuWY7nTI9iS1DZOVD_GQQzpALb8hdtE6nYYjxASbV5wlvo34FSA5sA9KCiVQrTUSYuXdjWNns8zmm56dU60lA0ad80JHV3sHdU5xGANKHQNC9fRKpVS-6iHrKvFJHCWhhOH9Ij7CXPAMhldQ_pq0gelg9-Qgi2dlH45dpNki
+}
+
+body:json {
+  {
+    "t": "Invoker",
+    "parameters": {},
+    "presentation": {
+      "t": "ImageSource",
+      "label": "neue Notiz",
+      "tooltip": "",
+      "italic": false,
+      "uri": "/images/_75/all/ap16/add.png",
+      "overlayUri": null
+    },
+    "shortcut": "CREATE",
+    "objId": 31011934949,
+    "activityId": 31025008310,
+    "methodId": 10010004,
+    "parentId": 0,
+    "methodName": "Object.Create()",
+    "reference": "NOTECREATE",
+    "target": "_blank",
+    "seq": 1
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "attributeprofile-designer-light",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local inspector for i-engine attribute profiles",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

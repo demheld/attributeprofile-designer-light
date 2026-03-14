@@ -1,0 +1,12 @@
+
+Continue the FormularDesigner-light work from the saved repo memory.
+
+Important current state:
+- Keep the existing SDAPI call flow exactly as implemented
+- SELECT and RADIO with popupObjId already load options via ObjList
+- conditionalValueList logic is already implemented
+- RADIO + conditionalValueList + GROUPING is working
+- Do not regress the working dropdown/conditional behavior
+
+Next task:
+<your new request here>

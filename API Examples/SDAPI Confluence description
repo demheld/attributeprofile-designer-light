@@ -1,0 +1,359 @@
+Hier entsteht das Konzept zum SDAPI zum JIRA-Task IE-7011:
+
+
+
+PoC Responses von WSAPI Stateless zur Verfügung stellen
+
+Als erstes kam die Idee die WSAPI Responses in einem Stateless-Modus zur Verfügung zu stellen
+
+Vorteile
+
+Schon viel entwickelt
+
+alle Attributprofile wie gewünscht
+
+Nachteile:
+
+Siehe Kritik unten: https://the-i-engineers.atlassian.net/wiki/spaces/DSO/pages/134610945/sdapi#Kritik-am-PoC 
+
+
+
+Postman-Collection ist zu finden in https://github.com/the-i-engineers/iengine-core/tree/develop/rest2/request_collections/SDAPI v0.1.postman_collection.json
+
+es gibt daneben auch ein Postman environment für PP_DEMO_USER, das Passwort ist im Keepass zu finden unter “Patientenportal Demo User”
+
+
+
+Requests
+
+GET /sdapi/0.1/objects/{identifier}
+
+Führt Object.Menu() auf dem durch identifier eindeutig referenzierten Objekt aus. Als identifier können folgende Werte übergeben werden:
+
+eine obj_id (Zahl > 10Mio): Falls der angemeldete User die Berechtigung hat, wird Object.Menu() auf dem Objekt mit parent_id=0 ausgeführt. Es wird das Menu auf dem Status mit status_id=max(obj_status_id mit mindestens einer berechtigten Aktivität) ausgeführt
+
+Einer der folgenden Strings. Dabei werden die Menüs auf den Objekten, welche in der zugehörigen p_user-Spalte des gerade eingeloggten Users eingetragen sind geholt:
+
+USER: Es wird das Menü zur P_USER_ID geladen.
+
+USER_ROOT
+
+USER_RECYCLEBIN
+
+USER_RECYCLED
+
+USER_INBOX
+
+USER_SHOPPINGCART
+
+USER_FAVORITES
+
+USER_TASKS: Es wird das Objekt vom typ 'TASKLIST' geholt, welches unter dem “ROOT” hängt und welches eine Aktivität in irgend einem Status hat, welche BEHAVIOUR='YES' hat
+
+ein beliebiger String. Es wird das Menü geholt, auf dem Objekt mit sys_object_tbl.unique_name = '{identifier}' 
+
+PUT /sdapi/0.1/invoke-method
+
+führt eine Aktion (z.B Aktivität) mit zusätzlichen Argumenten in einer komplett neuen Transaktion aus
+als Body wird eine Ableitung von Invoker aus einer vorhergehenden Response (z.B. aus dem Menu) erwartet.
+
+{
+   "t":"Invoker",
+   "objId":31011922446,
+   "activityId":31011907906,
+   "methodId":0,
+   "parentId":0,
+   "methodName":"Object.ConstraintObjList()",
+   "parameters":{
+      "window_transaction_id":{
+         "t":"SimpleStringDO",
+         "value":"fbc5c425e8cfa91bf2f3484131c3b853"
+      },
+      "wname":{
+         "t":"SimpleStringDO",
+         "value":"project_edit"
+      },
+      "reference":{
+         "t":"SimpleStringDO",
+         "value":"FULL"
+      }
+   },
+   "presentation":null,
+   "shortcut":null,
+   "reference":"FULL",
+   "tempParamkeyObjlistSelected":"objlist_selected",
+   "tempParamkeyObjlistViewed":"objlist_viewed"
+}
+
+
+
+GET /sdapi/0.1/{objId}/{activityId}/{parentId}
+
+führt die Aktivität aus, bzw liefert das erste Form der Aktivität. Entspricht im Wesentlichen /invoke-method ohne dass parameter mitgegeben werden können.
+
+
+
+PUT /sdapi/0.1/{objId}/{activityId}/{parentId}/step MediaType.APPLICATION_JSON_VALUE
+
+führt einen Step einer Aktivität aus
+als Body wird ein StepInvoker aus dem vorhergehenden Form erwartet, dabei müssen die attributeValues aus allen vorhergehenden Forms in die parameters des StepInvokers vereinigt abgefüllt werden:
+
+
+{
+	"t": "StepInvoker",
+	"parameters": {
+		"step_no": {
+			"t": "SimpleStringDO",
+			"value": "1"
+		},
+		"SYS_ATTRIBUTE.T20[BODY0,40]": {
+			"t": "TextMlDO",
+			"language": "L0",
+			"valueL0": "",
+			"valueL1": "",
+			"valueL2": "",
+			"valueL3": ""
+		},
+		"SYS_ATTRIBUTE.N12[BODY0,4]": {
+			"t": "StringDO",
+			"internalValue": "",
+			"displayValue": ""
+		},
+		"SYS_OBJECT.OBJ_INDEX[HEADER,3]": {
+			"t": "StringDO",
+			"internalValue": "01",
+			"displayValue": "01"
+		},
+		"SYS_ATTRIBUTE.N14[BODY0,13]": {
+			"t": "StringDO",
+			"internalValue": "",
+			"displayValue": ""
+		},
+		"SYS_OBJECT.OBJ_ID[HEADER,2]": {
+			"t": "StringDO",
+			"internalValue": "31019478333",
+			"displayValue": "31019478333"
+		},
+		"SYS_OBJECT.DESCR[BODY0,1]": {
+			"t": "TextMlDO",
+			"language": "L0",
+			"valueL0": "Notiz",
+			"valueL1": "Notiz",
+			"valueL2": "Notiz",
+			"valueL3": "Notiz"
+		},
+		"SYS_ATTRIBUTE.D2[BODY0,33]": {
+			"t": "DateDO",
+			"internalValue": "2022-08-15T00:00:00Z",
+			"displayValue": null
+		},
+		"SYS_ATTRIBUTE.T2[HIDDEN,10]": {
+			"t": "StringDO",
+			"internalValue": "2.753.161",
+			"displayValue": "2.753.161(?)"
+		},
+		"SYS_OBJECT.CREATION_DATE[BODY0,14]": {
+			"t": "DateDO",
+			"internalValue": "2022-08-15T09:28:33Z",
+			"displayValue": null
+		},
+		"SYS_ATTRIBUTE.N15[BODY0,3]": {
+			"t": "StringDO",
+			"internalValue": "",
+			"displayValue": ""
+		},
+		"SYS_ATTRIBUTE.T6[BODY0,5]": {
+			"t": "StringDO",
+			"internalValue": "",
+			"displayValue": ""
+		},
+		"SYS_ATTRIBUTE.T10[BODY0,6]": {
+			"t": "StringDO",
+			"internalValue": "",
+			"displayValue": ""
+		},
+		"SYS_OBJECT.OBJ_NAME[BODY0,0]": {
+			"t": "TextMlDO",
+			"language": "L0",
+			"valueL0": "Das ist eine Notiz",
+			"valueL1": "Das ist eine Notiz",
+			"valueL2": "Das ist eine Notiz",
+			"valueL3": "Das ist eine Notiz"
+		},
+		"SYS_OBJECT.OBJ_NAME[HEADER,1]": {
+			"t": "TextMlDO",
+			"language": "L0",
+			"valueL0": "Das ist eine Notiz",
+			"valueL1": "Das ist eine Notiz",
+			"valueL2": "Das ist eine Notiz",
+			"valueL3": "Das ist eine Notiz"
+		}
+	},
+	"txnId": "f7afa4deb53d157b6e6ff3d03e0ab9a7",
+	"stepNo": 1,
+	"presentation": null,
+	"shortcut": "NONE"
+}
+
+
+
+PUT /sdapi/0.1/{objId}/{activityId}/{parentId}/step MediaType.MULTIPART_FORM_DATA_VALUE
+
+Application_JSON wird auch akzeptiert, jedoch nur weil springboot relativ gutmütig ist.
+
+Analog zum APPLICATION_JSON fall, jedoch zusätzlich zum StepInvoker als String enthält der Body noch ein File als MultipartFile.
+
+
+
+GET /sdapi/0.1/{objId}/{activityId}/{parentId}/attributeProfile?stepNo={n}
+
+holt das Form von step {n} ohne die Aktivität auszuführen oder zu starten
+
+Dazu muss die Methode ISteppable.loadStepForm(int stepNo) implementiert werden.
+
+PUT /sdapi/0.1/{objId}/{activityId}/{parentId}/autocompleteOptions
+
+holt sich autocomplete-optionen
+als Body wird ein “GetAutocompleteOptionsUpdate” aus dem vorhergehenden Form erwartet, z.B:
+
+
+{
+    "t": "GetAutocompleteOptionsUpdate",
+    "txnId": "aa",
+    "stmtId": 31011564328,
+    "maxOptions": 2147483647,
+    "currentDisplayValue": "tie",
+    "minPrefixLength": 1,
+    // from popupObjId  
+    "params": {
+        "a": "b"
+    }
+}
+
+PUT /sdapi/0.1/{objId}/{activityId}/{parentId}/options
+
+holt sich Optionen für Secondary-Felder
+als Body wird ein “GetOptionsUpdate” basierend auf den Werten aus dem zugehörigen Form erwartet, z.B:
+
+{
+    "t": "GetOptionsUpdate",
+    "stmtId": 11003110548,
+    "maxOptions": 1000,
+    "params": {
+        "primary_key": {
+            "t": "StringDO",
+            "internalValue": "<Gegenwärtiger Wert des Primary-Feldes>"
+        }
+    }
+}
+
+Bemerkungen:
+
+Quelle “stmtId”: GuiAttributeShow.popupObjId des Feldes für das man die Optionen abholen will.
+
+“maxOptions” ist wichtig beim Request GetAutocompleteOptionsUpdate, kann beim GetOptionsUpdate jedoch fix mit z.B. 1000 (wie bei unserem Webclient) angebeben werden.
+
+Zu einem Secondary können mehrere Primaries gehören. In diesem Fall muss der Primary noch einen Namen in den Tag-Prefs unter dem Key name haben.
+Beispiel:
+Tag-Prefs Feld 1:
+
+...
+"tagPrefs": {
+    "primary": "1"
+    "name": "feld1"
+},
+...
+
+
+Tag-Prefs Feld 2:
+
+...
+"tagPrefs": {
+    "primary": "1"
+    "name": "feld2"
+},
+...
+
+
+Request Body:
+
+{
+    "t": "GetOptionsUpdate",
+    "stmtId": 11003110548,
+    "maxOptions": 1000,
+    "params": {
+        "feld1": {
+            "t": "StringDO",
+            "internalValue": "<Gegenwärtiger Wert von feld1>"
+        },
+        "feld2": {
+            "t": "StringDO",
+            "internalValue": "<Gegenwärtiger Wert von feld2>"
+        }
+    }
+}
+
+
+
+Missing Pieces
+
+SDAPI-Client bauen, analog zu REST2-Client
+
+Object.CreateAutoImport funktioniert nicht, weil WSAPI transactional ist und das File irgendwie in einer Session zwischengespeichert wird
+
+File muss irgendwie zwischengespeichert werden
+
+Braucht ein neues Konzeptchen
+
+Analogon zum ForwardFilter https://the-i-engineers.atlassian.net/browse/IE-7561 
+
+Es gibt clients, die die Attribute “semantisch”, als xmlElementName kennen und sich nicht um Attribut-Names kümmern wollen (IHE-Ecke, Importer, Schnittstellen)
+
+Schreibt der ForwardFilter die AttributeValues Map um, von xmlElementName zu den erwarteten attributeNames?
+
+xmlElementName pro AttributeShow, um Attribute eindeutig zu identifizieren
+
+Kritik am PoC
+
+Pro Step kommen nur Teile des Attributprofils 
+
+→ erledigt mit ISteppable.loadFormStep(int stepNo)
+
+Wir wollen beim GET einfach an das Attributprofil der Aktivität kommen, aber nicht schon die Aktivität ausführen --> ist im heutigen GUI nicht nötig
+
+ erledigt mit loadForm(step)
+
+Transaktionen sind nicht über mehrere Request hinaus verfügbar
+
+Was passiert bei Object.CreateAutoImport() ? --> Es wäre relativ einfach möglich, das Persistieren ans Ende zu schieben https://the-i-engineers.atlassian.net/browse/IE-7471
+
+Object.Create() funktioniert auch nicht, weil die Infos der vorgeschalteten Maske nicht mitkommen
+
+80% erledigt mit https://the-i-engineers.atlassian.net/browse/IE-7592 
+
+Was passiert mit Method.params/Method.stepParams? --> es wird nur stepParams aktualisiert und params werden nicht weitergeschleust
+
+80% erledigt mit https://the-i-engineers.atlassian.net/browse/IE-7592 : Clients müssen für alles Steps die Vereinigung der attributeValues der vorhergehenden Forms mitgeben
+
+Was ist mit Zwischenzuständen ?
+-- Was ist mit dem Transaktions-Intermediate-Poller?
+
+Könnte vermutlich erledigt sein mithttps://the-i-engineers.atlassian.net/browse/IE-7592 : Wenn bei den vorhergehenden Steps die Attributprofile per /sdapi/0.1/{objId}/{activityId}/{parentId}/attributeProfile?stepNo={n} geholt werden, werden auch keine Zwischenzustände gesetzt. Dann können alle Profile geholt werden, die Attribute gesetzt werden und im allerletzten Form der Step via /step gesetzt werden. Dadurch wird das Objekt kurz den Zwischenzustand haben und dann in den Endzustand versetzt.
+
+Die Funktionalität von Zwischenzuständen (z.B blockieren, damit nur der aktuelle User daran arbeiten kann) wird aber durch SDAPI ausgehebelt.
+
+Was ist mit ServerCheckern?
+
+Trennung von MethodState und Method könnte helfen → Method-State irgendwie serialisieren?
+
+Was ist mit HATEAOS? braucht es das zukünftig?
+
+Step-Numbering wird nach aussen zur Verfügung gestellt: Etwas einfacheres, sprechenderes wäre toll:
+
+0 = “initial”
+
+1 = “final”
+
+99 = “error” oder so
+
+nicht das Wichtigste: Trennung zwischen Attributprofil und Daten existiert nicht

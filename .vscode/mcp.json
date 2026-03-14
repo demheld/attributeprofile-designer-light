@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "remote-mcp": {
+       "type": "sse",
+      "url": "http://172.16.44.117:8000/mcp"
+    }
+  }
+}

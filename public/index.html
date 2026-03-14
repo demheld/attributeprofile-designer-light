@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AttributeProfile Editor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+
+      <header>
+        <p class="eyebrow">SDAPI · i-engine</p>
+        <h1>AttributeProfile Editor</h1>
+      </header>
+
+      <!-- Auth section: shown briefly while redirecting to auth-service -->
+      <!-- Step 1: Input form -->
+      <section class="card" id="inputSection">
+        <form id="mainForm">
+          <div class="field-group">
+            <label for="baseUrl">API Base URL</label>
+            <input id="baseUrl" type="text" value="https://kundenportal.tie.ch/rest2/sdapi/0.1" required />
+          </div>
+          <div class="field-group">
+            <label for="token">Bearer Token</label>
+            <input id="token" type="password" placeholder="Paste your JWT here" required autocomplete="off" />
+          </div>
+          <div class="field-group">
+            <label for="objId">Object ID</label>
+            <input id="objId" type="text" placeholder="e.g. 31011934949" required />
+          </div>
+          <div class="field-group">
+            <label for="nullProfileObjId">Nullprofile Object ID (context)</label>
+            <input id="nullProfileObjId" type="text" placeholder="e.g. 31024521264" />
+          </div>
+          <button type="submit" id="loadBtn">Load Attribute Profile</button>
+        </form>
+      </section>
+
+      <!-- Status banner -->
+      <div id="statusBanner" class="status-banner hidden"></div>
+
+      <!-- Profile display -->
+      <section class="card hidden" id="profileSection">
+        <div class="profile-header">
+          <div>
+            <h2 id="profileName"></h2>
+            <p class="profile-meta" id="profileMeta"></p>
+          </div>
+          <div class="header-actions">
+            <button class="secondary" id="datenkontextBtn" type="button">Datenkontext</button>
+            <button id="sendToServerBtn" type="button">Send to Server</button>
+            <button class="secondary" id="resetBtn" type="button">← New Query</button>
+          </div>
+        </div>
+        <p id="sendStatus" class="profile-meta"></p>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="layout" type="button">Form Layout</button>
+          <button class="tab" data-tab="table" type="button">Field Table</button>
+          <button class="tab" data-tab="raw" type="button">Raw JSON</button>
+        </div>
+
+        <!-- Form Layout tab -->
+        <div id="tabLayout" class="tab-pane">
+          <div id="headerFields"></div>
+          <div id="bodyLabel" class="section-label hidden">BODY</div>
+          <div id="formGrid" class="form-grid"></div>
+          <div id="otherFields"></div>
+        </div>
+
+        <!-- Field Table tab -->
+        <div id="tabTable" class="tab-pane hidden">
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th data-sort-key="seq">seq</th>
+                  <th data-sort-key="showType">showType</th>
+                  <th data-sort-key="hpos">hpos</th>
+                  <th data-sort-key="vpos">vpos</th>
+                  <th data-sort-key="colspan">colspan</th>
+                  <th data-sort-key="rowspan">rowspan</th>
+                  <th data-sort-key="displayName">displayName</th>
+                  <th data-sort-key="attributeName">attributeName</th>
+                  <th data-sort-key="tag">tag</th>
+                  <th data-sort-key="datatype">datatype</th>
+                  <th data-sort-key="mandatory">mandatory</th>
+                  <th data-sort-key="hidden">hidden</th>
+                  <th data-sort-key="readonly">readonly</th>
+                </tr>
+              </thead>
+              <tbody id="fieldTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Raw JSON tab -->
+        <div id="tabRaw" class="tab-pane hidden">
+          <pre id="rawOutput"></pre>
+        </div>
+      </section>
+
+    </div>
+
+    <dialog id="fieldEditorModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="fieldEditorForm">
+        <div class="field-editor-head">
+          <h3>Edit Attribute Field</h3>
+          <p id="fieldEditorMeta" class="field-editor-meta"></p>
+        </div>
+
+        <div class="field-editor-tabs">
+          <button type="button" class="field-editor-tab active" data-editor-tab="basic">Basic</button>
+          <button type="button" class="field-editor-tab" data-editor-tab="expert" id="expertTabBtn">Expert</button>
+        </div>
+
+        <div class="field-editor-presets">
+          <button type="button" class="tag-preset-btn preset-select" id="presetSelectBtn">Auswahlliste</button>
+          <button type="button" class="tag-preset-btn preset-richtext" id="presetRichtextBtn">Textfeld</button>
+          <button type="button" class="tag-preset-btn preset-radio" id="presetRadioBtn">Auswahlliste (Radiobuttons)</button>
+        </div>
+
+        <div id="editorBasicPane" class="editor-pane">
+          <label for="editAttributeName">attributeName</label>
+          <select id="editAttributeName"></select>
+
+          <label for="editDisplayName">displayName</label>
+          <input id="editDisplayName" type="text" />
+
+          <label for="editTag">tag</label>
+          <select id="editTag"></select>
+          <button type="button" class="secondary" id="editTagMoreBtn">weitere Tags</button>
+
+          <label for="editPopupType">popupType</label>
+          <input id="editPopupType" type="text" />
+
+          <label for="editPopupObjId">popupObjId</label>
+          <input id="editPopupObjId" type="number" />
+
+          <div class="editor-checks">
+            <label class="editor-checkbox">
+              <input id="editMandatory" type="checkbox" /> mandatory
+            </label>
+            <label class="editor-checkbox">
+              <input id="editReadonly" type="checkbox" /> readonly
+            </label>
+            <label class="editor-checkbox">
+              <input id="editHidden" type="checkbox" /> hidden
+            </label>
+            <label class="editor-checkbox">
+              <input id="editPersisted" type="checkbox" /> persisted
+            </label>
+            <label class="editor-checkbox">
+              <input id="editConditionalField" type="checkbox" /> Bedingtes Feld
+            </label>
+          </div>
+
+          <div id="conditionalConfig" class="conditional-config hidden">
+            <label for="conditionalChoiceSelect">Conditional Choice</label>
+            <div class="conditional-choice-row">
+              <select id="conditionalChoiceSelect"></select>
+              <button type="button" class="secondary icon-btn" id="conditionalDepsBtn" title="Abhaengige Felder waehlen" aria-label="Abhaengige Felder waehlen">⚙</button>
+            </div>
+            <p id="conditionalChoiceMeta" class="profile-meta"></p>
+          </div>
+        </div>
+
+        <div id="editorExpertPane" class="editor-pane hidden">
+          <p class="expert-hint">All attribute properties. Edit form fields or raw JSON below.</p>
+          <div id="expertFormControls" class="editor-grid-full"></div>
+          <textarea id="editFieldJson" class="editor-json" spellcheck="false"></textarea>
+        </div>
+
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="cancelEditorBtn">Cancel</button>
+          <button type="button" id="saveEditorBtn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="conditionalDepsModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="conditionalDepsForm">
+        <div class="field-editor-head">
+          <h3>Abhaengige Felder</h3>
+          <p id="conditionalDepsMeta" class="field-editor-meta"></p>
+        </div>
+        <div id="conditionalDepsList" class="conditional-deps-list"></div>
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="cancelConditionalDepsBtn">Cancel</button>
+          <button type="button" id="saveConditionalDepsBtn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="conditionalWarningModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="conditionalWarningForm">
+        <div class="field-editor-head">
+          <h3>Bedingtes Feld: Voraussetzungen nicht erfuellt</h3>
+          <p id="conditionalWarningMeta" class="field-editor-meta"></p>
+        </div>
+        <div id="conditionalWarningReasons" class="warning-list"></div>
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="cancelConditionalWarningBtn">Schliessen</button>
+          <button type="button" id="createValueListBtn">Neue Value List erstellen</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="valueListCreateModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="valueListCreateForm">
+        <div class="field-editor-head">
+          <h3>Neue Value List erstellen</h3>
+          <p id="valueListCreateMeta" class="field-editor-meta"></p>
+        </div>
+        <div id="valueListCreateFields" class="editor-grid-full"></div>
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="cancelValueListCreateBtn">Cancel</button>
+          <button type="button" id="saveValueListCreateBtn">Create</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="popupEntryModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="popupEntryForm">
+        <div class="field-editor-head">
+          <h3>Neuen Listenwert hinzufuegen</h3>
+          <p id="popupEntryMeta" class="field-editor-meta"></p>
+        </div>
+        <div class="popup-entry-grid">
+          <label for="popupEntryValue">Wert</label>
+          <input id="popupEntryValue" type="text" />
+          <label for="popupEntryDescription">Beschreibung</label>
+          <input id="popupEntryDescription" type="text" />
+        </div>
+        <p id="popupEntryError" class="popup-entry-error" hidden></p>
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="cancelPopupEntryBtn">Cancel</button>
+          <button type="button" id="savePopupEntryBtn">Hinzufuegen</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="quickAddFieldModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="quickAddFieldForm">
+        <div class="field-editor-head">
+          <h3>Neues Feld anlegen</h3>
+          <p class="field-editor-meta">Wird direkt im BODY-Bereich platziert und danach im Editor geoeffnet.</p>
+        </div>
+        <div class="editor-pane">
+          <label for="quickAddFieldType">Feldtyp</label>
+          <select id="quickAddFieldType">
+            <option value="SELECT">Auswahlliste</option>
+            <option value="RICHTEXT">Textfeld</option>
+            <option value="RADIO">Auswahlliste (Radiobuttons)</option>
+          </select>
+
+          <label for="quickAddDisplayName">Bezeichnung</label>
+          <input id="quickAddDisplayName" type="text" placeholder="z.B. Neues Feld" />
+
+          <label for="quickAddAttributeName">Attribute Name (optional)</label>
+          <input id="quickAddAttributeName" type="text" placeholder="wird automatisch erzeugt" />
+        </div>
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="cancelQuickAddFieldBtn">Cancel</button>
+          <button type="button" id="saveQuickAddFieldBtn">Hinzufuegen</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="datenkontextModal" class="field-editor-modal">
+      <form method="dialog" class="field-editor-dialog" id="datenkontextForm">
+        <div class="field-editor-head datenkontext-head">
+          <h3>Datenkontext (Nullprofile)</h3>
+          <button type="button" id="saveDatenkontextBtn">Nullprofile speichern</button>
+          <p class="field-editor-meta">Nullprofile Obj-ID und einfache Attributliste (seq, attributeName, displayName).</p>
+          <p id="datenkontextStatus" class="profile-meta"></p>
+        </div>
+
+        <div class="editor-pane">
+          <label for="datenkontextObjId">Nullprofile Object ID</label>
+          <div class="conditional-choice-row">
+            <input id="datenkontextObjId" type="text" placeholder="z.B. 31024521264" />
+            <button type="button" id="loadDatenkontextBtn">Laden</button>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>seq</th>
+                  <th>attributeName</th>
+                  <th>displayName</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody id="datenkontextListBody"></tbody>
+            </table>
+          </div>
+          <button type="button" class="secondary" id="addDatenkontextRowBtn">+ Eintrag</button>
+        </div>
+
+        <div class="field-editor-actions">
+          <button type="button" class="secondary" id="closeDatenkontextBtn">Schliessen</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
