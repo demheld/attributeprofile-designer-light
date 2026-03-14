@@ -380,6 +380,38 @@ async function handleAuthCheck(req, res) {
   }
 }
 
+/**
+ * POST /authenticate/postbind
+ * Receives a cross-domain token delivery form-POST from auth-service after
+ * successful login (auth-service posts `token` + `redirectLocation` here
+ * when the registered application's success-url is on a different domain).
+ * We surface the token to the frontend via an HTML meta-refresh so the user
+ * does not have to paste it manually.
+ */
+async function handleAuthPostbind(req, res) {
+  let body = {};
+  try {
+    body = await parseFormBody(req);
+  } catch {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("Bad request");
+    return;
+  }
+
+  const token = String(body.token || "").trim();
+  if (!token) {
+    res.writeHead(302, { Location: "/" });
+    res.end();
+    return;
+  }
+
+  // Redirect to root with token in URL fragment – fragment is never sent to
+  // the server, so it stays client-side only.
+  const fragment = encodeURIComponent(token);
+  res.writeHead(302, { Location: `/#received-token=${fragment}` });
+  res.end();
+}
+
 module.exports = {
   handleMenu,
   handleInvoke,
@@ -388,4 +420,5 @@ module.exports = {
   handleWsapiCall,
   handleSubmitStep,
   handleAuthCheck,
+  handleAuthPostbind,
 };

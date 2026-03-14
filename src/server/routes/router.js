@@ -8,9 +8,12 @@ const {
   handleWsapiCall,
   handleSubmitStep,
   handleAuthCheck,
+  handleAuthPostbind,
 } = require("./apiHandlers");
 
 const API_ROUTES = [
+  // auth-service delivers the JWT here after cross-domain login (postbind flow)
+  { method: "POST", path: "/authenticate/postbind", handler: handleAuthPostbind },
   { method: "POST", path: "/api/auth-check", handler: handleAuthCheck },
   { method: "POST", path: "/api/menu", handler: handleMenu },
   { method: "POST", path: "/api/invoke", handler: handleInvoke },

@@ -240,13 +240,27 @@ function restoreFormFromStorage() {
   return { token, baseUrl };
 }
 
-function buildAuthServiceUrl(rawBaseUrl) {
+/**
+ * Build the URL for auth-service login.
+ * Format: <origin>/authenticate/start?application=<app>&path=<path>
+ *
+ * `application` must match a registered client name in the auth-service config.
+ * Once the formulardesigner is registered (success-url pointing to this app's
+ * host), auth-service will deliver the JWT via a postbind POST to
+ * /authenticate/postbind on this server, and the user will be logged in
+ * automatically without having to paste the token.
+ *
+ * Until then, `application=auth-service` lets the user authenticate at the
+ * auth-service cockpit and retrieve the token manually.
+ */
+function buildAuthServiceUrl(rawBaseUrl, application = "auth-service", path = "/") {
   const value = String(rawBaseUrl || "").trim();
   if (!value) return "";
 
   try {
     const parsed = new URL(value);
-    return `${parsed.origin}/auth-service`;
+    const params = new URLSearchParams({ application, path });
+    return `${parsed.origin}/authenticate/start?${params.toString()}`;
   } catch {
     return "";
   }
@@ -4136,3 +4150,27 @@ mainForm.addEventListener("submit", async (e) => {
 
 // -- Boot -----------------------------------------------------------------------
 restoreFormFromStorage();
+
+// If auth-service delivered a token via postbind, it lands in the URL fragment
+// as #received-token=<encoded-jwt>.  Pick it up, prefill the field, then
+// clean the fragment so it does not linger in the address bar.
+(function pickupPostbindToken() {
+  const hash = window.location.hash;
+  const prefix = "#received-token=";
+  if (!hash.startsWith(prefix)) return;
+
+  const encoded = hash.slice(prefix.length);
+  const token = decodeURIComponent(encoded);
+  if (!token) return;
+
+  const tokenInput = document.getElementById("token");
+  if (tokenInput) {
+    tokenInput.value = token;
+    tokenInput.type = "text"; // briefly show it so the user sees something arrived
+    setTimeout(() => { tokenInput.type = "password"; }, 2400);
+  }
+
+  // Remove fragment without triggering a navigation
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+  showCenterNotice("JWT-Token vom Auth-Service empfangen und eingetragen.", "info", 3000);
+}());

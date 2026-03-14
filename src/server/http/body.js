@@ -24,6 +24,25 @@ async function parseJsonBody(req) {
   }
 }
 
+/**
+ * Parse application/x-www-form-urlencoded body (e.g. from auth-service postbind).
+ * Returns a plain object of decoded key → value pairs.
+ */
+async function parseFormBody(req) {
+  const raw = await readBody(req);
+  if (!raw) return {};
+  const result = {};
+  for (const pair of raw.split("&")) {
+    const eqIdx = pair.indexOf("=");
+    if (eqIdx < 0) continue;
+    const key = decodeURIComponent(pair.slice(0, eqIdx).replace(/\+/g, " "));
+    const val = decodeURIComponent(pair.slice(eqIdx + 1).replace(/\+/g, " "));
+    result[key] = val;
+  }
+  return result;
+}
+
 module.exports = {
   parseJsonBody,
+  parseFormBody,
 };
