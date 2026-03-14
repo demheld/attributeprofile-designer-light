@@ -135,12 +135,22 @@ button.secondary:hover { background: #dbeafe; }
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.input-actions-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
 }
 
 button.btn-green {
   background: #15803d;
   color: #ffffff;
   box-shadow: 0 2px 8px rgba(21, 128, 61, 0.25);
+  margin-left: auto;
 }
 
 button.btn-green:hover {
