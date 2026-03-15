@@ -252,13 +252,14 @@ function restoreFormFromStorage() {
   const token = localStorage.getItem("tie_token") || "";
   let baseUrl = localStorage.getItem(LS_BASE_URL) || "";
   let objId = localStorage.getItem(LS_OBJ_ID) || "";
-  const nullProfileObjId = localStorage.getItem(LS_NULL_OBJ_ID) || "";
+  let nullProfileObjIdValue = localStorage.getItem(LS_NULL_OBJ_ID) || "";
   let objClassId = localStorage.getItem(LS_OBJ_CLASS_ID) || "";
 
   try {
     const params = new URLSearchParams(window.location.search || "");
     const objIdFromUrl = getUrlParamValue(params, ["objId", "objectId"]);
     const objClassIdFromUrl = getUrlParamValue(params, ["objClassId", "objektklassenId", "objectClassId"]);
+    const nullProfileObjIdFromUrl = getUrlParamValue(params, ["nullProfileObjId", "nullprofileObjId", "nullObjId"]);
 
     if (objIdFromUrl) {
       objId = objIdFromUrl;
@@ -267,6 +268,10 @@ function restoreFormFromStorage() {
     if (objClassIdFromUrl) {
       objClassId = objClassIdFromUrl;
       localStorage.setItem(LS_OBJ_CLASS_ID, objClassId);
+    }
+    if (nullProfileObjIdFromUrl) {
+      nullProfileObjIdValue = nullProfileObjIdFromUrl;
+      localStorage.setItem(LS_NULL_OBJ_ID, nullProfileObjIdValue);
     }
   } catch {
     // ignore invalid search params
@@ -280,7 +285,7 @@ function restoreFormFromStorage() {
   if (baseUrl) document.getElementById("baseUrl").value = baseUrl;
   if (token) document.getElementById("token").value = token;
   if (objId) document.getElementById("objId").value = objId;
-  if (nullProfileObjId) document.getElementById("nullProfileObjId").value = nullProfileObjId;
+  if (nullProfileObjIdValue) document.getElementById("nullProfileObjId").value = nullProfileObjIdValue;
   if (objClassId && document.getElementById("objClassId")) document.getElementById("objClassId").value = objClassId;
 
   return { token, baseUrl, objId, objClassId };

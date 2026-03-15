@@ -66,6 +66,11 @@ h1 {
   margin-bottom: 1rem;
 }
 
+.field-group--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .url-param-hint {
   margin-bottom: 1rem;
   padding: 0.9rem 1rem;

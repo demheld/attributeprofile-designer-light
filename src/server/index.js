@@ -12,7 +12,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`AttributeProfile Editor running at http://localhost:${PORT}`);
+  console.log(`Leichtgewichtiger Formulardesigner running at http://localhost:${PORT}`);
 });
 
 module.exports = {

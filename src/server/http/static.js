@@ -5,7 +5,8 @@ const { MIME_TYPES, PUBLIC_DIR } = require("../config");
 const { sendJson } = require("./respond");
 
 function serveStatic(req, res) {
-  const requestPath = req.url === "/" ? "/index.html" : req.url;
+  const urlPathname = req.url.split("?")[0] || "/";
+  const requestPath = urlPathname === "/" ? "/index.html" : urlPathname;
   const safePath = path.normalize(requestPath).replace(/^([.][.][/\\])+/, "");
   const filePath = path.join(PUBLIC_DIR, safePath);
 

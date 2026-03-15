@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AttributeProfile Editor</title>
+    <title>Leichtgewichtiger Formulardesigner</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
 
       <header>
         <p class="eyebrow">SDAPI · i-engine</p>
-        <h1>AttributeProfile Editor</h1>
+        <h1>Leichtgewichtiger Formulardesigner</h1>
       </header>
 
       <!-- Auth section: shown briefly while redirecting to auth-service -->
@@ -20,8 +20,8 @@
         <form id="mainForm">
           <div class="url-param-hint" role="note" aria-live="polite">
             <p class="url-param-hint-title">Hinweis</p>
-            <p>Die Attributprofil-ID und die Objektklassen-ID für den Datenkontext können auch als URL Parameter übergeben werden mit folgendem Schema</p>
-            <p class="url-param-schema">http://localhost:5174/?objId=&lt;Attributprofil-ID&gt;&amp;objClassId=&lt;Objektklassen-ID&gt;</p>
+            <p>Die Attributprofil-ID, die Objektklassen-ID und die Nullprofil-ID für den Datenkontext können auch als URL Parameter übergeben werden mit folgendem Schema</p>
+            <p class="url-param-schema">https://formulardesigner.borter.net/?objId=&lt;Attributprofil-ID&gt;&amp;objClassId=&lt;Objektklassen-ID&gt;&amp;nullProfileObjId=&lt;Nullprofil-ID&gt;</p>
           </div>
           <div class="field-group">
             <label for="baseUrl">API Base URL</label>
@@ -35,9 +35,9 @@
             <label for="objId">Object ID</label>
             <input id="objId" type="text" placeholder="e.g. 31011934949" required="">
           </div>
-          <div class="field-group">
+          <div class="field-group field-group--disabled">
             <label for="objClassId">Objektklassen-ID (Datenkontext)</label>
-            <input id="objClassId" type="text" placeholder="e.g. 31026762453">
+            <input id="objClassId" type="text" placeholder="e.g. 31026762453" disabled>
           </div>
           <div class="field-group">
             <label for="nullProfileObjId">Nullprofile Object ID (Datenkontext)</label>
