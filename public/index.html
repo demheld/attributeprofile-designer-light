@@ -145,6 +145,9 @@
           <label for="editPopupObjId">popupObjId</label>
           <input id="editPopupObjId" type="number" />
 
+          <label for="editTagPrefReadonly">tagPref</label>
+          <input id="editTagPrefReadonly" type="text" readonly />
+
           <div class="editor-checks">
             <label class="editor-checkbox">
               <input id="editMandatory" type="checkbox" /> mandatory
@@ -164,12 +167,22 @@
           </div>
 
           <div id="conditionalConfig" class="conditional-config hidden">
-            <label for="conditionalChoiceSelect">Conditional Choice</label>
-            <div class="conditional-choice-row">
-              <select id="conditionalChoiceSelect"></select>
-              <button type="button" class="secondary icon-btn" id="conditionalDepsBtn" title="Abhaengige Felder waehlen" aria-label="Abhaengige Felder waehlen">⚙</button>
+            <div id="conditionalSetupSection">
+              <label for="conditionalValueListInput">Abhaengige Felder Liste ID</label>
+              <div class="conditional-choice-row">
+                <input id="conditionalValueListInput" type="text" placeholder="z.B. 31027730722" />
+                <button type="button" class="secondary" id="confirmConditionalValueListBtn">Uebernehmen</button>
+              </div>
+              <button type="button" class="secondary" id="createNewConditionalValueListBtn">Neue Liste erstellen</button>
             </div>
-            <p id="conditionalChoiceMeta" class="profile-meta"></p>
+            <div id="conditionalChoiceSection" class="hidden">
+              <label for="conditionalChoiceSelect">Conditional Choice</label>
+              <div class="conditional-choice-row">
+                <select id="conditionalChoiceSelect"></select>
+                <button type="button" class="secondary icon-btn" id="conditionalDepsBtn" title="Abhaengige Felder waehlen" aria-label="Abhaengige Felder waehlen">⚙</button>
+              </div>
+              <p id="conditionalChoiceMeta" class="profile-meta"></p>
+            </div>
           </div>
         </div>
 
@@ -192,6 +205,12 @@
           <h3>Abhaengige Felder</h3>
           <p id="conditionalDepsMeta" class="field-editor-meta"></p>
         </div>
+        <label for="conditionalNewChoiceSelect">Neuer Choice Eintrag (aus Dropdown)</label>
+        <div class="conditional-choice-row">
+          <select id="conditionalNewChoiceSelect"></select>
+          <button type="button" class="secondary" id="conditionalAddChoiceBtn">Uebernehmen</button>
+        </div>
+        <p id="conditionalAddChoiceMeta" class="profile-meta"></p>
         <div id="conditionalDepsList" class="conditional-deps-list"></div>
         <div class="field-editor-actions">
           <button type="button" class="secondary" id="cancelConditionalDepsBtn">Cancel</button>

@@ -29,6 +29,12 @@ const editTag = document.getElementById("editTag");
 const editTagMoreBtn = document.getElementById("editTagMoreBtn");
 const editPopupType = document.getElementById("editPopupType");
 const editPopupObjId = document.getElementById("editPopupObjId");
+const editTagPrefReadonly = document.getElementById("editTagPrefReadonly");
+const conditionalSetupSection = document.getElementById("conditionalSetupSection");
+const conditionalChoiceSection = document.getElementById("conditionalChoiceSection");
+const conditionalValueListInput = document.getElementById("conditionalValueListInput");
+const confirmConditionalValueListBtn = document.getElementById("confirmConditionalValueListBtn");
+const createNewConditionalValueListBtn = document.getElementById("createNewConditionalValueListBtn");
 const editMandatory = document.getElementById("editMandatory");
 const editReadonly = document.getElementById("editReadonly");
 const editHidden = document.getElementById("editHidden");
@@ -49,6 +55,9 @@ const conditionalChoiceMeta = document.getElementById("conditionalChoiceMeta");
 const conditionalDepsModal = document.getElementById("conditionalDepsModal");
 const conditionalDepsMeta = document.getElementById("conditionalDepsMeta");
 const conditionalDepsList = document.getElementById("conditionalDepsList");
+const conditionalNewChoiceSelect = document.getElementById("conditionalNewChoiceSelect");
+const conditionalAddChoiceBtn = document.getElementById("conditionalAddChoiceBtn");
+const conditionalAddChoiceMeta = document.getElementById("conditionalAddChoiceMeta");
 const cancelConditionalDepsBtn = document.getElementById("cancelConditionalDepsBtn");
 const saveConditionalDepsBtn = document.getElementById("saveConditionalDepsBtn");
 const conditionalWarningModal = document.getElementById("conditionalWarningModal");
@@ -189,6 +198,8 @@ const appState = {
   conditionalEditor: {
     enabled: false,
     listObjId: "",
+    cachedListObjId: "",
+    sourceOptions: [],
     items: [],
     selectedKey: "",
     dependenciesByKey: {},
@@ -1313,6 +1324,8 @@ async function openFieldEditor(index) {
   editReadonly.checked = Boolean(field.readonly);
   editHidden.checked = Boolean(field.hidden);
   editPersisted.checked = Boolean(field.persisted);
+  appState.conditionalEditor.cachedListObjId = "";
+  refreshConditionalTagPrefControls(field);
 
   // Expert tab - dynamically generate all field controls
   generateExpertFormControls(field);
@@ -1394,7 +1407,47 @@ function applyLiveBasicEdit() {
   field.readonly = editReadonly.checked;
   field.hidden = editHidden.checked;
   field.persisted = editPersisted.checked;
+  refreshConditionalTagPrefControls(field);
   if (appState.invokeData) renderProfile(appState.invokeData);
+}
+
+function getConditionalValueListObjId(field) {
+  const prefs = parseTagPrefs(field?.tagPrefs ?? field?.tagPref);
+  return String(prefs.conditionalValueList || prefs.conditional_value_list || "").trim();
+}
+
+function refreshConditionalTagPrefControls(field) {
+  if (!editTagPrefReadonly) return;
+  const rawTagPref = field?.tagPrefs ?? field?.tagPref;
+  if (rawTagPref && typeof rawTagPref === "object") {
+    editTagPrefReadonly.value = JSON.stringify(rawTagPref);
+  } else {
+    editTagPrefReadonly.value = String(rawTagPref || "");
+  }
+}
+
+async function createMissingConditionalValueListForSelectedField() {
+  const idx = appState.selectedFieldIndex;
+  if (idx < 0) return;
+  const field = appState.shows[idx];
+  if (!field) return;
+
+  const existingObjId = getConditionalValueListObjId(field);
+  if (existingObjId) {
+    showStatus(`conditionalValueList ${existingObjId} ist bereits gesetzt.`, "info");
+    return;
+  }
+
+  const creation = await createConditionalValueListForField(field);
+  setFieldConditionalValueListReference(field, creation.createdObjId);
+  refreshConditionalTagPrefControls(field);
+  editFieldJson.value = JSON.stringify(field, null, 2);
+
+  await initConditionalEditorForField(field);
+  editConditionalField.checked = true;
+  syncConditionalConfigVisibility();
+
+  showCenterNotice(`Abhaengige Felder Liste erstellt: ${creation.createdObjId}`, "info", 2200);
 }
 
 function applyLiveExpertFormEdit() {
@@ -1460,32 +1513,48 @@ if (editTagMoreBtn) {
 }
 
 editConditionalField.addEventListener("change", async () => {
+  const idx = appState.selectedFieldIndex;
+  const field = idx >= 0 ? appState.shows[idx] : null;
+
   if (!editConditionalField.checked) {
+    if (field) {
+      const currentListObjId = getConditionalValueListObjId(field);
+      if (currentListObjId) {
+        appState.conditionalEditor.cachedListObjId = currentListObjId;
+        removeConditionalValueListReference(field);
+        refreshConditionalTagPrefControls(field);
+        editFieldJson.value = JSON.stringify(field, null, 2);
+      }
+    }
+    resetConditionalEditorState();
     syncConditionalConfigVisibility();
     return;
   }
 
-  const idx = appState.selectedFieldIndex;
-  const field = idx >= 0 ? appState.shows[idx] : null;
   if (!field) {
     editConditionalField.checked = false;
     syncConditionalConfigVisibility();
     return;
   }
 
-  const eligibility = await evaluateConditionalEligibility(field);
+  const eligibility = evaluateConditionalEligibility(field);
   if (!eligibility.ok) {
-    appState.pendingConditionalWarningFieldIndex = idx;
     editConditionalField.checked = false;
     syncConditionalConfigVisibility();
-    openConditionalWarningDialog(field, eligibility.reasons);
+    showStatus(eligibility.reasons[0], "warning");
     return;
   }
 
-  if (!appState.conditionalEditor.listObjId) {
-    conditionalChoiceMeta.textContent = "No conditionalValueList configured in tagPrefs.";
+  const existingListObjId = getConditionalValueListObjId(field);
+  if (existingListObjId) {
+    await initConditionalEditorForField(field);
+  } else {
+    appState.conditionalEditor.enabled = true;
+    if (conditionalValueListInput) {
+      conditionalValueListInput.value = appState.conditionalEditor.cachedListObjId || "";
+    }
+    syncConditionalConfigVisibility();
   }
-  syncConditionalConfigVisibility();
 });
 
 conditionalChoiceSelect.addEventListener("change", () => {
@@ -1493,9 +1562,16 @@ conditionalChoiceSelect.addEventListener("change", () => {
   updateConditionalChoiceMeta();
 });
 
-conditionalDepsBtn.addEventListener("click", openConditionalDepsModal);
+conditionalDepsBtn.addEventListener("click", () => {
+  void openConditionalDepsModal();
+});
 cancelConditionalDepsBtn.addEventListener("click", () => conditionalDepsModal.close());
 saveConditionalDepsBtn.addEventListener("click", applyConditionalDepsSelection);
+if (conditionalAddChoiceBtn) {
+  conditionalAddChoiceBtn.addEventListener("click", () => {
+    void addConditionalChoiceFromSourceValue();
+  });
+}
 cancelConditionalWarningBtn.addEventListener("click", () => conditionalWarningModal.close());
 
 createValueListBtn.addEventListener("click", async () => {
@@ -1510,6 +1586,48 @@ createValueListBtn.addEventListener("click", async () => {
     createValueListBtn.disabled = false;
   }
 });
+
+if (confirmConditionalValueListBtn) {
+  confirmConditionalValueListBtn.addEventListener("click", async () => {
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field) return;
+    const enteredId = String(conditionalValueListInput?.value || "").trim();
+    if (!enteredId || !/^\d+$/.test(enteredId)) {
+      showStatus("Bitte eine gueltige numerische ID eingeben.", "warning");
+      return;
+    }
+    setFieldConditionalValueListReference(field, enteredId);
+    refreshConditionalTagPrefControls(field);
+    editFieldJson.value = JSON.stringify(field, null, 2);
+    await initConditionalEditorForField(field);
+    syncConditionalConfigVisibility();
+  });
+}
+
+if (createNewConditionalValueListBtn) {
+  createNewConditionalValueListBtn.addEventListener("click", async () => {
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field) return;
+    try {
+      createNewConditionalValueListBtn.disabled = true;
+      createNewConditionalValueListBtn.textContent = "Erstelle Liste ...";
+      const creation = await createConditionalValueListForField(field);
+      setFieldConditionalValueListReference(field, creation.createdObjId);
+      refreshConditionalTagPrefControls(field);
+      editFieldJson.value = JSON.stringify(field, null, 2);
+      await initConditionalEditorForField(field);
+      syncConditionalConfigVisibility();
+      showCenterNotice(`Abhaengige Felder Liste erstellt: ${creation.createdObjId}`, "info", 2200);
+    } catch (error) {
+      showStatus(`Neue Liste erstellen fehlgeschlagen: ${error.message}`, "error");
+    } finally {
+      createNewConditionalValueListBtn.disabled = false;
+      createNewConditionalValueListBtn.textContent = "Neue Liste erstellen";
+    }
+  });
+}
 
 cancelValueListCreateBtn.addEventListener("click", () => valueListCreateModal.close());
 saveValueListCreateBtn.addEventListener("click", async () => {
@@ -2047,6 +2165,17 @@ function setFieldConditionalValueListReference(field, listObjId) {
   field[targetKey] = serializeTagPrefs(rawPrefs, parsedPrefs);
 }
 
+function removeConditionalValueListReference(field) {
+  if (!field) return;
+  const prefersTagPrefs = field.tagPrefs !== undefined || field.tagPref === undefined;
+  const targetKey = prefersTagPrefs ? "tagPrefs" : "tagPref";
+  const rawPrefs = field[targetKey];
+  const parsedPrefs = { ...parseTagPrefs(rawPrefs) };
+  delete parsedPrefs.conditionalValueList;
+  delete parsedPrefs.conditional_value_list;
+  field[targetKey] = serializeTagPrefs(rawPrefs, parsedPrefs);
+}
+
 function normalizeMethodName(name) {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, "");
 }
@@ -2100,18 +2229,22 @@ function extractConditionalListItems(data) {
       const attrNames = Array.isArray(node.attrNames) ? node.attrNames.map((name) => String(name || "").trim()) : [];
       const normalizedHeaders = attrNames.map((name) => name.toLowerCase());
       const keyIndex = normalizedHeaders.findIndex((name) => ["bezeichnung", "key", "name", "anzeigewert"].includes(name));
-      const valueIndex = normalizedHeaders.findIndex((name) => ["beschreibung", "value", "description"].includes(name));
+      const valueIndex = normalizedHeaders.findIndex((name) => ["beschreibung", "value", "description", "descr"].includes(name));
+      const resolvedKeyIndex = keyIndex >= 0 ? keyIndex : 0;
+      const resolvedValueIndex = valueIndex >= 0 ? valueIndex : -1;
 
       node.items.forEach((item) => {
         const isValueList = String(item?.objclass?.type || "").toUpperCase() === "VALUE_LIST";
         if (!isValueList || !Array.isArray(item.attrValues)) return;
 
-        const keyName = attrNames[keyIndex >= 0 ? keyIndex : 1] || "bezeichnung";
-        const valueName = attrNames[valueIndex >= 0 ? valueIndex : 2] || "beschreibung";
-        const key = String(item.attrValues[keyIndex >= 0 ? keyIndex : 1] || item.objName || item.obj_name || "").trim();
+        const keyName = attrNames[resolvedKeyIndex] || "bezeichnung";
+        const valueName = valueIndex >= 0 ? (attrNames[resolvedValueIndex] || "beschreibung") : "beschreibung";
+        const key = String(item.attrValues[resolvedKeyIndex] || item.objName || item.obj_name || "").trim();
         if (!key) return;
 
-        const rawDependencies = String(item.attrValues[valueIndex >= 0 ? valueIndex : 2] || "").trim();
+        const rawDependencies = resolvedValueIndex >= 0
+          ? String(item.attrValues[resolvedValueIndex] || "").trim()
+          : "";
         results.push({
           key,
           objId: item.objId,
@@ -2190,14 +2323,17 @@ function renderConditionalChoiceOptions() {
   const firstKey = state.items[0]?.key || "";
   state.selectedKey = state.selectedKey && state.dependenciesByKey[state.selectedKey] ? state.selectedKey : firstKey;
   conditionalChoiceSelect.value = state.selectedKey;
-  conditionalDepsBtn.disabled = !state.selectedKey;
+  conditionalDepsBtn.disabled = !state.listObjId;
   updateConditionalChoiceMeta();
 }
 
 function resetConditionalEditorState() {
+  const cachedListObjId = appState.conditionalEditor.cachedListObjId || "";
   appState.conditionalEditor = {
     enabled: false,
     listObjId: "",
+    cachedListObjId,
+    sourceOptions: [],
     items: [],
     selectedKey: "",
     dependenciesByKey: {},
@@ -2210,8 +2346,13 @@ function resetConditionalEditorState() {
 }
 
 function syncConditionalConfigVisibility() {
-  const active = editConditionalField.checked && Boolean(appState.conditionalEditor.listObjId);
-  conditionalConfig.classList.toggle("hidden", !active);
+  const checked = editConditionalField.checked;
+  conditionalConfig.classList.toggle("hidden", !checked);
+  if (!checked) return;
+
+  const hasListObjId = Boolean(appState.conditionalEditor.listObjId);
+  if (conditionalSetupSection) conditionalSetupSection.classList.toggle("hidden", hasListObjId);
+  if (conditionalChoiceSection) conditionalChoiceSection.classList.toggle("hidden", !hasListObjId);
 }
 
 function collectObjListItems(data) {
@@ -2281,43 +2422,14 @@ function evaluateTagForConditional(field) {
   return { ok: false, tag };
 }
 
-async function evaluateConditionalEligibility(field) {
-  const reasons = [];
-
+function evaluateConditionalEligibility(field) {
   const tagCheck = evaluateTagForConditional(field);
-  if (!tagCheck.ok) {
-    reasons.push("Das Feld muss tag=SELECT oder tag=RADIO haben.");
-  }
-
   const popupObjId = String(field?.popupObjId || "").trim();
-  if (!popupObjId) {
-    reasons.push("popupObjId ist nicht gesetzt.");
-    return { ok: false, popupObjId: "", reasons };
-  }
-
-  if (!/^\d+$/.test(popupObjId)) {
-    reasons.push("popupObjId muss numerisch sein.");
-    return { ok: false, popupObjId, reasons };
-  }
-
-  try {
-    // Force a live backend lookup so validation does not rely on stale cached ObjList payloads.
-    clearObjListLookupCache(popupObjId);
-    const objListData = await loadObjListData(popupObjId);
-    const check = hasValueListInObjListInvokeResponse(objListData);
-    if (!check.foundObjList) {
-      reasons.push("Object.ObjList() invoke response enthaelt keine ObjList-Struktur.");
-    } else if (!check.foundValueList) {
-      reasons.push("Object.ObjList() invoke response hat kein item mit objclass.type=VALUE_LIST.");
-    }
-  } catch (error) {
-    reasons.push(`ObjList fuer popupObjId konnte nicht geladen werden: ${error.message}`);
-  }
-
+  const ok = tagCheck.ok && /^\d+$/.test(popupObjId) && popupObjId !== "0";
   return {
-    ok: reasons.length === 0,
+    ok,
     popupObjId,
-    reasons,
+    reasons: ok ? [] : ["Keine Optionen zur Verfügung für Bedingtes Feld. Konfigurieren sie zuerst eine Auswahlliste (tag=SELECT oder RADIO mit popupObjId)."],
   };
 }
 
@@ -2876,6 +2988,7 @@ async function submitValueListCreation() {
 
 async function initConditionalEditorForField(field) {
   resetConditionalEditorState();
+  refreshConditionalTagPrefControls(field);
 
   const prefs = parseTagPrefs(field.tagPrefs ?? field.tagPref);
   const listObjId = String(prefs.conditionalValueList || prefs.conditional_value_list || "").trim();
@@ -2886,6 +2999,7 @@ async function initConditionalEditorForField(field) {
 
   if (!hasConditionalList) {
     conditionalChoiceMeta.textContent = "No conditionalValueList defined in tagPrefs.";
+    refreshConditionalTagPrefControls(field);
     syncConditionalConfigVisibility();
     return;
   }
@@ -2911,16 +3025,58 @@ async function initConditionalEditorForField(field) {
   }
 
   syncConditionalConfigVisibility();
+  refreshConditionalTagPrefControls(field);
 }
 
-function openConditionalDepsModal() {
+async function openConditionalDepsModal() {
   const state = appState.conditionalEditor;
   const selectedKey = conditionalChoiceSelect.value;
   state.selectedKey = selectedKey;
   conditionalDepsList.innerHTML = "";
 
+  const idx = appState.selectedFieldIndex;
+  const field = idx >= 0 ? appState.shows[idx] : null;
+  const popupObjId = String(field?.popupObjId || "").trim();
+
+  if (conditionalNewChoiceSelect) {
+    conditionalNewChoiceSelect.innerHTML = "";
+  }
+  state.sourceOptions = [];
+
+  if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
+  if (conditionalAddChoiceMeta) conditionalAddChoiceMeta.textContent = "";
+
+  if (popupObjId && /^\d+$/.test(popupObjId)) {
+    try {
+      const sourceOptions = await loadValueList(popupObjId);
+      state.sourceOptions = Array.isArray(sourceOptions) ? sourceOptions : [];
+      if (conditionalNewChoiceSelect) {
+        state.sourceOptions.forEach((option) => {
+          const entry = document.createElement("option");
+          entry.value = String(option.value || option.label || "");
+          entry.textContent = String(option.label || option.value || "");
+          conditionalNewChoiceSelect.appendChild(entry);
+        });
+      }
+      if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = !state.sourceOptions.length;
+      if (conditionalAddChoiceMeta) {
+        conditionalAddChoiceMeta.textContent = state.sourceOptions.length
+          ? "Wert aus Dropdown waehlen und als neuen Conditional Choice uebernehmen."
+          : "Im Dropdown sind keine Werte verfuegbar.";
+      }
+    } catch (error) {
+      if (conditionalAddChoiceMeta) {
+        conditionalAddChoiceMeta.textContent = `Dropdown-Werte konnten nicht geladen werden: ${error.message}`;
+      }
+      if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
+    }
+  } else if (conditionalAddChoiceMeta) {
+    conditionalAddChoiceMeta.textContent = "popupObjId fehlt. Bitte zuerst eine Auswahlliste konfigurieren.";
+  }
+
   if (!selectedKey) {
     conditionalDepsMeta.textContent = "Select a choice first.";
+    conditionalDepsModal.showModal();
     return;
   }
 
@@ -2945,6 +3101,54 @@ function openConditionalDepsModal() {
   });
 
   conditionalDepsModal.showModal();
+}
+
+async function addConditionalChoiceFromSourceValue() {
+  const state = appState.conditionalEditor;
+  if (!state.listObjId) {
+    showStatus("Keine conditionalValueList gesetzt.", "warning");
+    return;
+  }
+
+  const selectedLabel = String(conditionalNewChoiceSelect?.selectedOptions?.[0]?.textContent || "").trim();
+  if (!selectedLabel) {
+    showStatus("Bitte zuerst einen Dropdown-Wert waehlen.", "warning");
+    return;
+  }
+
+  const existing = state.items.find((item) => String(item.key || "").trim().toUpperCase() === selectedLabel.toUpperCase());
+  if (existing) {
+    state.selectedKey = existing.key;
+    conditionalChoiceSelect.value = existing.key;
+    await openConditionalDepsModal();
+    return;
+  }
+
+  const idx = appState.selectedFieldIndex;
+  const field = idx >= 0 ? appState.shows[idx] : null;
+  if (!field) return;
+
+  try {
+    if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
+    await createPopupEntryViaSdapiFlow(state.listObjId, selectedLabel, selectedLabel);
+    clearObjListLookupCache(state.listObjId);
+    await initConditionalEditorForField(field);
+
+    const matched = appState.conditionalEditor.items.find(
+      (item) => String(item.key || "").trim().toUpperCase() === selectedLabel.toUpperCase()
+    );
+    if (matched) {
+      appState.conditionalEditor.selectedKey = matched.key;
+      conditionalChoiceSelect.value = matched.key;
+    }
+
+    await openConditionalDepsModal();
+    showCenterNotice(`Choice '${selectedLabel}' wurde hinzugefuegt.`, "info", 1800);
+  } catch (error) {
+    showStatus(`Choice konnte nicht erstellt werden: ${error.message}`, "error");
+  } finally {
+    if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = false;
+  }
 }
 
 function applyConditionalDepsSelection() {
@@ -3049,8 +3253,11 @@ function resolveParameterKey(parameters, attributeNameHint, previousRawValue) {
   const hintLower = String(attributeNameHint || "").trim().toLowerCase();
   if (["beschreibung", "description", "descr"].includes(hintLower)) {
     const descrMatch = entries.find(([key]) => /(^|\.)descr(\[|$)/i.test(String(key)));
-    if (descrMatch) return descrMatch[0][0];
+    if (descrMatch) return descrMatch[0];
   }
+
+  const genericDescrMatch = entries.find(([key]) => /(^|\.)descr(\[|$)|description|beschreibung/i.test(String(key)));
+  if (genericDescrMatch) return genericDescrMatch[0];
 
   return String(attributeNameHint || "").trim();
 }
