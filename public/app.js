@@ -261,7 +261,7 @@ function buildAuthServiceUrl(rawBaseUrl, application = "auth-service", path = "/
     const parsed = new URL(value);
     const params = new URLSearchParams({
       application: "formulardesigner",
-      path: "portal",
+      path: "/",
       lang: "DE",
     });
     return `${parsed.origin}/auth-service/authenticate/start?${params.toString()}`;
@@ -1078,8 +1078,7 @@ if (authServiceBtn) {
       return;
     }
     saveFormToStorage();
-    window.open(authUrl, "_blank", "noopener");
-    showCenterNotice("Auth-Service in neuem Tab geoeffnet.", "info", 1600);
+    window.location.assign(authUrl);
   });
 }
 
