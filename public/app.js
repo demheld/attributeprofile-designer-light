@@ -1677,23 +1677,83 @@ if (loadDatenkontextBtn) {
   });
 }
 
+function createNullprofileDraftShow(nextSeq) {
+  const bodyTemplate = appState.nullProfileShows.find((show) => String(show?.showType || "").toUpperCase() === "BODY")
+    || appState.nullProfileShows[0]
+    || {};
+
+  const fallbackField = {
+    t: "AttributeShowDO",
+    checker: "NONE",
+    colspan: 1,
+    datatype: "TEXT",
+    defaultValue: null,
+    defaultValueL1: null,
+    defaultValueL2: null,
+    defaultValueL3: null,
+    descr: null,
+    displayNameL1: "default Wert",
+    displayNameL2: "default Wert",
+    displayNameL3: "default Wert",
+    displayNameWidth: 32,
+    format: null,
+    hpos: 1,
+    mandatory: false,
+    hidden: false,
+    readonly: false,
+    persisted: true,
+    pageNr: 0,
+    popupDialogprefs: null,
+    popupMandatory: "NO",
+    popupObjId: 0,
+    popupP1: null,
+    popupProfileId: null,
+    popupType: "NONE",
+    reference: null,
+    rowspan: 1,
+    serverChecker: null,
+    tag: "TEXT",
+    tagPref: "NONE",
+    vpos: nextSeq,
+    valueStmtId: 0,
+    xmlElementName: null,
+    alignment: "LEFT",
+    info: null,
+    infoL1: null,
+    infoL2: null,
+    infoL3: null,
+    systemAttributeName: null,
+    code: null,
+    codeSystem: null,
+  };
+
+  const usedNames = new Set(appState.nullProfileShows.map((show) => normalizeAttributeKey(show?.attributeName)));
+  let attributeName = `sys_attribute.new_${nextSeq}`;
+  let suffix = 2;
+  while (usedNames.has(normalizeAttributeKey(attributeName))) {
+    attributeName = `sys_attribute.new_${nextSeq}_${suffix}`;
+    suffix += 1;
+  }
+
+  return {
+    ...fallbackField,
+    ...cloneJson(bodyTemplate || {}),
+    t: "AttributeShowDO",
+    seq: nextSeq,
+    showType: "BODY",
+    attributeName,
+    displayName: `Neues Feld ${nextSeq}`,
+    popupObjId: bodyTemplate?.popupObjId ?? 0,
+    xmlElementName: null,
+  };
+}
+
 if (addDatenkontextRowBtn) {
   addDatenkontextRowBtn.addEventListener("click", () => {
     const maxSeq = appState.nullProfileShows.length
       ? Math.max(...appState.nullProfileShows.map((show) => Number(show.seq) || 0))
       : 0;
-    appState.nullProfileShows.push({
-      seq: maxSeq + 1,
-      attributeName: "",
-      displayName: "",
-      showType: "BODY",
-      tag: "TEXT",
-      datatype: "TEXT",
-      hpos: 1,
-      vpos: 1,
-      colspan: 1,
-      rowspan: 1,
-    });
+    appState.nullProfileShows.push(createNullprofileDraftShow(maxSeq + 1));
     renderDatenkontextList();
     syncNullprofileOptions();
   });
