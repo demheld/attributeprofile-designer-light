@@ -20,16 +20,7 @@ function buildWsapiCallUrl(base) {
   if (parsedBase.protocol !== "https:") {
     throw new Error("Only https:// URLs are allowed");
   }
-
-  const basePath = parsedBase.pathname.replace(/\/+$/, "");
-  const pathScoped = `${parsedBase.origin}${basePath}/wsapi/call`;
-  const originScoped = `${parsedBase.origin}/wsapi/call`;
-
-  if (pathScoped === originScoped) {
-    return [originScoped];
-  }
-
-  return [pathScoped, originScoped];
+  return `${parsedBase.origin}/wsapi/call`;
 }
 
 module.exports = {
