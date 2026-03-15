@@ -13,6 +13,7 @@ const {
 
 const API_ROUTES = [
   // auth-service delivers the JWT here after cross-domain login (postbind flow)
+  { method: "GET", path: "/authenticate/postbind", handler: handleAuthPostbind },
   { method: "POST", path: "/authenticate/postbind", handler: handleAuthPostbind },
   { method: "POST", path: "/api/auth-check", handler: handleAuthCheck },
   { method: "POST", path: "/api/menu", handler: handleMenu },
@@ -25,13 +26,14 @@ const API_ROUTES = [
 
 async function routeRequest(req, res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
+  const reqPath = new URL(req.url, "http://localhost").pathname;
 
   if (req.method === "POST" && req.url.startsWith("/api/wsapi-call")) {
     await handleWsapiCall(req, res);
     return;
   }
 
-  const match = API_ROUTES.find((route) => req.method === route.method && req.url === route.path);
+  const match = API_ROUTES.find((route) => req.method === route.method && reqPath === route.path);
   if (match) {
     await match.handler(req, res);
     return;

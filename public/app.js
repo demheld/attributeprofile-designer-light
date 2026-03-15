@@ -1078,6 +1078,7 @@ if (authServiceBtn) {
       return;
     }
     saveFormToStorage();
+    sessionStorage.setItem("tie_auth_login_started_at", String(Date.now()));
     window.location.assign(authUrl);
   });
 }
@@ -4160,20 +4161,40 @@ restoreFormFromStorage();
 (function pickupPostbindToken() {
   const hash = window.location.hash;
   const prefix = "#received-token=";
-  if (!hash.startsWith(prefix)) return;
+  let token = "";
 
-  const encoded = hash.slice(prefix.length);
-  const token = decodeURIComponent(encoded);
-  if (!token) return;
+  if (hash.startsWith(prefix)) {
+    token = decodeURIComponent(hash.slice(prefix.length));
+  }
+
+  if (!token) {
+    const params = new URLSearchParams(window.location.search);
+    token = String(
+      params.get("received-token")
+      || params.get("token")
+      || params.get("jwt")
+      || ""
+    ).trim();
+  }
 
   const tokenInput = document.getElementById("token");
-  if (tokenInput) {
+  if (token && tokenInput) {
     tokenInput.value = token;
     tokenInput.type = "text"; // briefly show it so the user sees something arrived
     setTimeout(() => { tokenInput.type = "password"; }, 2400);
+    saveFormToStorage();
+    sessionStorage.removeItem("tie_auth_login_started_at");
+
+    // Remove token artifacts from URL without triggering a navigation.
+    history.replaceState(null, "", window.location.pathname);
+    showCenterNotice("JWT-Token vom Auth-Service empfangen und eingetragen.", "info", 3000);
+    return;
   }
 
-  // Remove fragment without triggering a navigation
-  history.replaceState(null, "", window.location.pathname + window.location.search);
-  showCenterNotice("JWT-Token vom Auth-Service empfangen und eingetragen.", "info", 3000);
+  const authStartedAt = Number(sessionStorage.getItem("tie_auth_login_started_at") || "0");
+  const recentLogin = Number.isFinite(authStartedAt) && authStartedAt > 0 && (Date.now() - authStartedAt) < 10 * 60 * 1000;
+  if (recentLogin) {
+    sessionStorage.removeItem("tie_auth_login_started_at");
+    showStatus("Login abgeschlossen, aber kein Token wurde an die App zurueckgegeben.", "warning");
+  }
 }());

@@ -1,6 +1,6 @@
 const { URL } = require("url");
 
-const { parseJsonBody } = require("../http/body");
+const { parseJsonBody, parseFormBody } = require("../http/body");
 const { sendJson } = require("../http/respond");
 const { fetchWithParsedPayload, sendUpstreamError } = require("../sdapi/upstream");
 const { buildUrl, buildWsapiCallUrl } = require("../sdapi/url");
@@ -389,26 +389,49 @@ async function handleAuthCheck(req, res) {
  * does not have to paste it manually.
  */
 async function handleAuthPostbind(req, res) {
-  let body = {};
-  try {
-    body = await parseFormBody(req);
-  } catch {
-    res.writeHead(400, { "Content-Type": "text/plain" });
-    res.end("Bad request");
-    return;
+  let formBody = {};
+  if (req.method === "POST") {
+    try {
+      formBody = await parseFormBody(req);
+    } catch {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Bad request");
+      return;
+    }
   }
 
-  const token = String(body.token || "").trim();
+  const reqUrl = new URL(req.url, "http://localhost");
+  const token = String(
+    formBody.token
+      || reqUrl.searchParams.get("token")
+      || reqUrl.searchParams.get("jwt")
+      || reqUrl.searchParams.get("received-token")
+      || ""
+  ).trim();
+
+  const redirectLocation = String(
+    formBody.redirectLocation
+      || reqUrl.searchParams.get("redirectLocation")
+      || "/"
+  ).trim();
+
+  let redirectPath = "/";
+  try {
+    const parsed = new URL(redirectLocation, "http://localhost");
+    redirectPath = `${parsed.pathname || "/"}${parsed.search || ""}`;
+  } catch {
+    redirectPath = "/";
+  }
+
   if (!token) {
-    res.writeHead(302, { Location: "/" });
+    res.writeHead(302, { Location: redirectPath });
     res.end();
     return;
   }
 
-  // Redirect to root with token in URL fragment – fragment is never sent to
-  // the server, so it stays client-side only.
+  // Keep token client-side by placing it in the URL fragment.
   const fragment = encodeURIComponent(token);
-  res.writeHead(302, { Location: `/#received-token=${fragment}` });
+  res.writeHead(302, { Location: `${redirectPath}#received-token=${fragment}` });
   res.end();
 }
 
