@@ -18,21 +18,30 @@
       <!-- Step 1: Input form -->
       <section class="card" id="inputSection">
         <form id="mainForm">
+          <div class="url-param-hint" role="note" aria-live="polite">
+            <p class="url-param-hint-title">Hinweis</p>
+            <p>Die Attributprofil-ID und die Objektklassen-ID für den Datenkontext können auch als URL Parameter übergeben werden mit folgendem Schema</p>
+            <p class="url-param-schema">http://localhost:5174/?objId=&lt;Attributprofil-ID&gt;&amp;objClassId=&lt;Objektklassen-ID&gt;</p>
+          </div>
           <div class="field-group">
             <label for="baseUrl">API Base URL</label>
-            <input id="baseUrl" type="text" value="https://kundenportal.tie.ch/rest2/sdapi/0.1" required />
+            <input id="baseUrl" type="text" value="https://kundenportal.tie.ch/rest2/sdapi/0.1" required="">
           </div>
           <div class="field-group">
             <label for="token">Bearer Token</label>
-            <input id="token" type="password" placeholder="Paste your JWT here" required autocomplete="off" />
+            <input id="token" type="password" placeholder="Paste your JWT here" required="" autocomplete="off">
           </div>
           <div class="field-group">
             <label for="objId">Object ID</label>
-            <input id="objId" type="text" placeholder="e.g. 31011934949" required />
+            <input id="objId" type="text" placeholder="e.g. 31011934949" required="">
           </div>
           <div class="field-group">
-            <label for="nullProfileObjId">Nullprofile Object ID (context)</label>
-            <input id="nullProfileObjId" type="text" placeholder="e.g. 31024521264" />
+            <label for="objClassId">Objektklassen-ID (Datenkontext)</label>
+            <input id="objClassId" type="text" placeholder="e.g. 31026762453">
+          </div>
+          <div class="field-group">
+            <label for="nullProfileObjId">Nullprofile Object ID (Datenkontext)</label>
+            <input id="nullProfileObjId" type="text" placeholder="e.g. 31024521264">
           </div>
           <div class="input-actions">
             <div class="input-actions-left">

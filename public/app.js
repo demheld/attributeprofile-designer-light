@@ -225,23 +225,52 @@ const appState = {
 const LS_BASE_URL = "tie_baseUrl";
 const LS_OBJ_ID = "tie_objId";
 const LS_NULL_OBJ_ID = "tie_nullProfileObjId";
+const LS_OBJ_CLASS_ID = "tie_objClassId";
+
+function getUrlParamValue(params, keys) {
+  for (const key of keys) {
+    const value = String(params.get(key) || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
 
 function saveFormToStorage() {
   const token = document.getElementById("token").value.trim();
   const baseUrl = document.getElementById("baseUrl").value.trim();
   const objId = document.getElementById("objId").value.trim();
   const nullProfileObjId = document.getElementById("nullProfileObjId").value.trim();
+  const objClassId = document.getElementById("objClassId")?.value.trim() || "";
   if (token) localStorage.setItem("tie_token", token);
   if (baseUrl) localStorage.setItem(LS_BASE_URL, baseUrl);
   if (objId) localStorage.setItem(LS_OBJ_ID, objId);
   localStorage.setItem(LS_NULL_OBJ_ID, nullProfileObjId);
+  localStorage.setItem(LS_OBJ_CLASS_ID, objClassId);
 }
 
 function restoreFormFromStorage() {
   const token = localStorage.getItem("tie_token") || "";
   let baseUrl = localStorage.getItem(LS_BASE_URL) || "";
-  const objId = localStorage.getItem(LS_OBJ_ID) || "";
+  let objId = localStorage.getItem(LS_OBJ_ID) || "";
   const nullProfileObjId = localStorage.getItem(LS_NULL_OBJ_ID) || "";
+  let objClassId = localStorage.getItem(LS_OBJ_CLASS_ID) || "";
+
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const objIdFromUrl = getUrlParamValue(params, ["objId", "objectId"]);
+    const objClassIdFromUrl = getUrlParamValue(params, ["objClassId", "objektklassenId", "objectClassId"]);
+
+    if (objIdFromUrl) {
+      objId = objIdFromUrl;
+      localStorage.setItem(LS_OBJ_ID, objId);
+    }
+    if (objClassIdFromUrl) {
+      objClassId = objClassIdFromUrl;
+      localStorage.setItem(LS_OBJ_CLASS_ID, objClassId);
+    }
+  } catch {
+    // ignore invalid search params
+  }
 
   if (baseUrl === "https://p-p.portal.tie.ch/rest2/sdapi/0.1") {
     baseUrl = "https://kundenportal.tie.ch/rest2/sdapi/0.1";
@@ -252,8 +281,9 @@ function restoreFormFromStorage() {
   if (token) document.getElementById("token").value = token;
   if (objId) document.getElementById("objId").value = objId;
   if (nullProfileObjId) document.getElementById("nullProfileObjId").value = nullProfileObjId;
+  if (objClassId && document.getElementById("objClassId")) document.getElementById("objClassId").value = objClassId;
 
-  return { token, baseUrl };
+  return { token, baseUrl, objId, objClassId };
 }
 
 /**
@@ -2285,11 +2315,19 @@ function getProfileAttributeOptions() {
       if (!key) return null;
       return {
         key,
+        attributeName: String(show.attributeName || "").trim(),
         label: String(show.displayName || show.attributeName || key).trim(),
       };
     })
     .filter(Boolean)
     .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function resolveDependencyAttributeName(normalizedKey) {
+  const wanted = normalizeAttributeKey(normalizedKey);
+  if (!wanted) return "";
+  const match = appState.shows.find((show) => normalizeAttributeKey(show?.attributeName) === wanted);
+  return String(match?.attributeName || normalizedKey || "").trim();
 }
 
 function updateConditionalChoiceMeta() {
@@ -2456,7 +2494,9 @@ function openConditionalWarningDialog(field, reasons) {
   conditionalWarningModal.showModal();
 }
 
-function findCreateValueListInvoker(data) {
+function findCreateValueListInvoker(data, allowedReferences = ["CREATE_CLI_SPEC_VALUELIST"]) {
+  const allowed = new Set((allowedReferences || []).map((ref) => String(ref || "").trim().toUpperCase()));
+
   function walk(node) {
     if (!node || typeof node !== "object") return null;
     if (Array.isArray(node)) {
@@ -2469,7 +2509,7 @@ function findCreateValueListInvoker(data) {
 
     const methodName = normalizeMethodName(node.methodName);
     const reference = String(node.reference || "").trim().toUpperCase();
-    if (methodName === normalizeMethodName("Object.Create()") && reference === "CREATE_CLI_SPEC_VALUELIST") {
+    if (methodName === normalizeMethodName("Object.Create()") && allowed.has(reference)) {
       return node;
     }
 
@@ -2540,7 +2580,7 @@ function invokerIdentityKey(invoker) {
   ].join("|");
 }
 
-async function discoverCreateValueListInvoker(rootObjId) {
+async function discoverCreateValueListInvoker(rootObjId, allowedReferences = ["CREATE_CLI_SPEC_VALUELIST"]) {
   const menuQueue = [String(rootObjId)];
   const visitedMenus = new Set();
   const objListInvokerQueue = [];
@@ -2571,7 +2611,7 @@ async function discoverCreateValueListInvoker(rootObjId) {
       visitedMenus.add(objId);
 
       const menuPayload = await sdapiClient.fetchMenuForObject(objId);
-      const fromMenu = findCreateValueListInvoker(menuPayload.data);
+      const fromMenu = findCreateValueListInvoker(menuPayload.data, allowedReferences);
       if (fromMenu) {
         return { createInvoker: fromMenu, source: `menu:${objId}` };
       }
@@ -2585,7 +2625,7 @@ async function discoverCreateValueListInvoker(rootObjId) {
     const invoker = objListInvokerQueue.shift();
     const invokePayload = await sdapiClient.invokeInvoker(invoker);
 
-    const fromInvoke = findCreateValueListInvoker(invokePayload.data);
+    const fromInvoke = findCreateValueListInvoker(invokePayload.data, allowedReferences);
     if (fromInvoke) {
       return {
         createInvoker: fromInvoke,
@@ -2597,7 +2637,9 @@ async function discoverCreateValueListInvoker(rootObjId) {
     enqueueMenuObjIds(invokePayload.data);
   }
 
-  throw new Error("Object.Create() with reference CREATE_CLI_SPEC_VALUELIST was not found after menu and ObjList traversal.");
+  throw new Error(
+    `Object.Create() with reference ${allowedReferences.join(" | ")} was not found after menu and ObjList traversal.`
+  );
 }
 
 async function discoverInvokerFromRoot(rootObjId, predicate, traversedMethodNames = ["Object.ObjList()"] ) {
@@ -2741,7 +2783,10 @@ function fillValueListCreateParameters(parameters, field) {
 }
 
 async function createConditionalValueListForField(field) {
-  const discovery = await discoverCreateValueListInvoker(VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID);
+  const discovery = await discoverCreateValueListInvoker(
+    VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID,
+    ["CREATE_CLI_SPEC_CVL_VALUELIST"]
+  );
   const createInvoker = discovery.createInvoker;
 
   const invokePayload = await sdapiClient.invokeInvoker(createInvoker);
@@ -2921,7 +2966,10 @@ async function openValueListCreateDialogForField(fieldIndex) {
 
   valueListCreateMeta.textContent = `Lade Create-Template aus Ordner ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} ...`;
 
-  const discovery = await discoverCreateValueListInvoker(VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID);
+  const discovery = await discoverCreateValueListInvoker(
+    VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID,
+    ["CREATE_CLI_SPEC_VALUELIST"]
+  );
   const createInvoker = discovery.createInvoker;
 
   const invokePayload = await sdapiClient.invokeInvoker(createInvoker);
@@ -3236,7 +3284,7 @@ function getParameterObjectValue(entry) {
 }
 
 function resolveParameterKey(parameters, attributeNameHint, previousRawValue) {
-  if (!parameters || typeof parameters !== "object") return String(attributeNameHint || "").trim();
+  if (!parameters || typeof parameters !== "object") return "";
 
   const normalizedHint = normalizeAttributeKey(attributeNameHint);
   const entries = Object.entries(parameters);
@@ -3259,7 +3307,20 @@ function resolveParameterKey(parameters, attributeNameHint, previousRawValue) {
   const genericDescrMatch = entries.find(([key]) => /(^|\.)descr(\[|$)|description|beschreibung/i.test(String(key)));
   if (genericDescrMatch) return genericDescrMatch[0];
 
-  return String(attributeNameHint || "").trim();
+  return "";
+}
+
+function resolvePreferredConditionalTargetKey(parameters) {
+  const entries = Object.entries(parameters || {});
+  if (!entries.length) return "";
+
+  const objectDescr = entries.find(([key]) => /(^|\.)object\.descr(\[|$)|(^|\.)descr(\[|$)/i.test(String(key)));
+  if (objectDescr) return objectDescr[0];
+
+  const attributeL1 = entries.find(([key]) => /(^|\.)attribute\.l1(\[|$)|(^|\.)l1(\[|$)/i.test(String(key)));
+  if (attributeL1) return attributeL1[0];
+
+  return "";
 }
 
 async function persistConditionalDependencies() {
@@ -3297,22 +3358,30 @@ async function persistConditionalDependencies() {
     const attributeValues = findAttributeValues(invokePayload.data);
 
     const deps = state.dependenciesByKey[key] || [];
-    const spaceSeparated = deps.join(" ");
-    const attributeName = selectedItem.dependencyAttributeName || "beschreibung";
-
+    const spaceSeparated = deps
+      .map((dep) => resolveDependencyAttributeName(dep))
+      .filter(Boolean)
+      .join(" ");
     stepInvoker.parameters = attributeValues && typeof attributeValues === "object"
       ? { ...attributeValues }
       : {};
 
-    const resolvedAttributeKey = resolveParameterKey(stepInvoker.parameters, attributeName, selectedItem.dependencyRawValue);
+    let resolvedAttributeKey = resolvePreferredConditionalTargetKey(stepInvoker.parameters);
+    if (!resolvedAttributeKey) {
+      const attributeName = selectedItem.dependencyAttributeName || "beschreibung";
+      resolvedAttributeKey = resolveParameterKey(stepInvoker.parameters, attributeName, selectedItem.dependencyRawValue);
+    }
+    if (!resolvedAttributeKey) {
+      throw new Error(
+        `Backend payload for '${selectedItem.objName || key}' has neither object.descr nor attribute.l1 in invoke-method response.`
+      );
+    }
 
     const updated = setValueInObjectRecursive(stepInvoker.parameters, resolvedAttributeKey, spaceSeparated);
     if (!updated) {
-      stepInvoker.parameters[resolvedAttributeKey] = {
-        t: "StringDO",
-        internalValue: spaceSeparated,
-        displayValue: spaceSeparated,
-      };
+      throw new Error(
+        `Resolved parameter '${resolvedAttributeKey}' could not be updated for '${selectedItem.objName || key}'.`
+      );
     }
 
     await sdapiClient.submitStep(stepInvoker, "/{objId}/{activityId}/{parentId}/step");
@@ -4514,7 +4583,21 @@ mainForm.addEventListener("submit", async (e) => {
 });
 
 // -- Boot -----------------------------------------------------------------------
-restoreFormFromStorage();
+const _bootState = restoreFormFromStorage();
+
+// Auto-submit when objId was supplied via URL param and a token is already stored.
+(function autoLoadFromUrlParams() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const hasObjIdParam = !!getUrlParamValue(params, ["objId", "objectId"]);
+    const hasToken = !!_bootState.token;
+    if (hasObjIdParam && hasToken) {
+      mainForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    }
+  } catch {
+    // ignore
+  }
+}());
 
 // If auth-service delivered a token via postbind, it lands in the URL fragment
 // as #received-token=<encoded-jwt>.  Pick it up, prefill the field, then

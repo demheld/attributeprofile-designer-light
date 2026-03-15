@@ -7,6 +7,10 @@
         "/^node --check public/app\\.js 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "ForEach-Object": true,
+        "git add": true,
+        "git commit": true,
+        "git push": true
     }
 }
