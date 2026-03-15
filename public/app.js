@@ -228,9 +228,14 @@ function saveFormToStorage() {
 
 function restoreFormFromStorage() {
   const token = localStorage.getItem("tie_token") || "";
-  const baseUrl = localStorage.getItem(LS_BASE_URL) || "";
+  let baseUrl = localStorage.getItem(LS_BASE_URL) || "";
   const objId = localStorage.getItem(LS_OBJ_ID) || "";
   const nullProfileObjId = localStorage.getItem(LS_NULL_OBJ_ID) || "";
+
+  if (baseUrl === "https://p-p.portal.tie.ch/rest2/sdapi/0.1") {
+    baseUrl = "https://kundenportal.tie.ch/rest2/sdapi/0.1";
+    localStorage.setItem(LS_BASE_URL, baseUrl);
+  }
 
   if (baseUrl) document.getElementById("baseUrl").value = baseUrl;
   if (token) document.getElementById("token").value = token;
@@ -1704,8 +1709,8 @@ if (saveDatenkontextBtn) {
       if (datenkontextStatus) datenkontextStatus.textContent = "Nullprofile wird gespeichert ...";
       saveDatenkontextBtn.disabled = true;
       await saveNullProfileContextToServer();
-      if (datenkontextStatus) datenkontextStatus.textContent = "Nullprofile erfolgreich gespeichert.";
-      showCenterNotice("Nullprofile erfolgreich gespeichert.", "info", 1600);
+      if (datenkontextStatus) datenkontextStatus.textContent = "Nullprofile erfolgreich ueber wsapi/call gespeichert (nicht ueber SDAPI).";
+      showCenterNotice("Nullprofile gespeichert: wsapi/call verwendet (SDAPI Edit-Support noch offen).", "info", 2200);
     } catch (error) {
       if (datenkontextStatus) datenkontextStatus.textContent = `Speichern fehlgeschlagen: ${error.message}`;
       showStatus(`Nullprofile speichern fehlgeschlagen: ${error.message}`, "error");
@@ -4156,7 +4161,8 @@ sendToServerBtn.addEventListener("click", async () => {
       currentInvokeData: rawProfile,
     });
 
-    sendStatus.textContent = "Sent successfully via two-step wsapi/call.";
+    sendStatus.textContent = "Saved via wsapi/call (not via SDAPI AttributeProfile.Edit support).";
+    showCenterNotice("Attributprofil gespeichert: wsapi/call verwendet (SDAPI Edit-Support noch offen).", "info", 2200);
   } catch (err) {
     sendStatus.textContent = `Send failed: ${err.message}`;
   } finally {

@@ -259,26 +259,39 @@ async function handleWsapiCall(req, res) {
     return;
   }
 
-  let url;
+  let wsapiUrls;
   try {
-    url = buildWsapiCallUrl(baseUrl);
+    wsapiUrls = buildWsapiCallUrl(baseUrl);
   } catch (error) {
     sendJson(res, 400, { error: error.message });
     return;
   }
 
   try {
-    const upstreamResponse = await fetchWithParsedPayload(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    let lastResponse = null;
+    let usedUrl = wsapiUrls[0];
 
-    sendUpstreamResponse(res, upstreamResponse, url);
+    for (let i = 0; i < wsapiUrls.length; i += 1) {
+      const candidateUrl = wsapiUrls[i];
+      const upstreamResponse = await fetchWithParsedPayload(candidateUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      lastResponse = upstreamResponse;
+      usedUrl = candidateUrl;
+
+      if (upstreamResponse.status !== 404 || i === wsapiUrls.length - 1) {
+        break;
+      }
+    }
+
+    sendUpstreamResponse(res, lastResponse, usedUrl);
   } catch (error) {
     sendUpstreamError(res, error);
   }
