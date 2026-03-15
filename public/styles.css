@@ -176,8 +176,8 @@ button.secondary:hover { background: #dbeafe; }
 }
 
 button.btn-green {
-  background: #15803d;
-  color: #ffffff;
+    background: #c8ff5a;
+    color: #0069ff;
   box-shadow: 0 2px 8px rgba(21, 128, 61, 0.25);
   margin-left: auto;
 }
