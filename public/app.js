@@ -228,10 +228,14 @@ const LS_NULL_OBJ_ID = "tie_nullProfileObjId";
 const LS_OBJ_CLASS_ID = "tie_objClassId";
 
 function getUrlParamValue(params, keys) {
-  for (const key of keys) {
-    const value = String(params.get(key) || "").trim();
+  const normalizedKeySet = new Set(keys.map((key) => String(key).toLowerCase()));
+
+  for (const [paramKey, paramValue] of params.entries()) {
+    if (!normalizedKeySet.has(String(paramKey).toLowerCase())) continue;
+    const value = String(paramValue || "").trim();
     if (value) return value;
   }
+
   return "";
 }
 
@@ -259,7 +263,14 @@ function restoreFormFromStorage() {
     const params = new URLSearchParams(window.location.search || "");
     const objIdFromUrl = getUrlParamValue(params, ["objId", "objectId"]);
     const objClassIdFromUrl = getUrlParamValue(params, ["objClassId", "objektklassenId", "objectClassId"]);
-    const nullProfileObjIdFromUrl = getUrlParamValue(params, ["nullProfileObjId", "nullprofileObjId", "nullObjId"]);
+    const nullProfileObjIdFromUrl = getUrlParamValue(params, [
+      "nullProfileObjId",
+      "nullprofileObjId",
+      "nullprofileobjid",
+      "nullProfileId",
+      "nullprofileid",
+      "nullObjId",
+    ]);
 
     if (objIdFromUrl) {
       objId = objIdFromUrl;
