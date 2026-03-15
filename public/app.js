@@ -1864,13 +1864,19 @@ function buildProfileRefreshInvoker(profileId) {
 
 function mergeEditedAttributeProfile(freshData, editedProfile) {
   const freshEditResponse = findObjectByType(freshData, "AttributeProfileEditResponse");
-  const freshProfile = freshEditResponse?.attributeProfile || freshData?.attributeProfile || {};
-  const mergedProfile = {
+  const freshProfile = freshEditResponse?.attributeProfile || freshData?.attributeProfile || null;
+  if (!freshProfile || typeof freshProfile !== "object") {
+    return {
+      t: "AttributeProfileDO",
+      ...cloneJson(editedProfile || {}),
+      attributeShows: cloneJson(editedProfile?.attributeShows || []),
+    };
+  }
+
+  return {
     ...cloneJson(freshProfile),
-    ...cloneJson(editedProfile),
+    attributeShows: cloneJson(editedProfile?.attributeShows || freshProfile?.attributeShows || []),
   };
-  mergedProfile.attributeShows = cloneJson(editedProfile?.attributeShows || freshProfile?.attributeShows || []);
-  return mergedProfile;
 }
 
 async function saveProfileViaWsapiRefresh({ token, baseUrl, sourceInvoker, stepInvokerTemplate, currentInvokeData }) {
