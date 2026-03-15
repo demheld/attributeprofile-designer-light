@@ -1862,6 +1862,17 @@ function buildProfileRefreshInvoker(profileId) {
   };
 }
 
+function normalizeAttributeShowsForSave(attributeShows) {
+  if (!Array.isArray(attributeShows)) return [];
+  return attributeShows.map((field) => {
+    const nextField = cloneJson(field || {});
+    if (nextField.popupObjId === null || nextField.popupObjId === undefined || String(nextField.popupObjId).trim() === "") {
+      nextField.popupObjId = 0;
+    }
+    return nextField;
+  });
+}
+
 function mergeEditedAttributeProfile(freshData, editedProfile) {
   const freshEditResponse = findObjectByType(freshData, "AttributeProfileEditResponse");
   const freshProfile = freshEditResponse?.attributeProfile || freshData?.attributeProfile || null;
@@ -1869,13 +1880,13 @@ function mergeEditedAttributeProfile(freshData, editedProfile) {
     return {
       t: "AttributeProfileDO",
       ...cloneJson(editedProfile || {}),
-      attributeShows: cloneJson(editedProfile?.attributeShows || []),
+      attributeShows: normalizeAttributeShowsForSave(editedProfile?.attributeShows || []),
     };
   }
 
   return {
     ...cloneJson(freshProfile),
-    attributeShows: cloneJson(editedProfile?.attributeShows || freshProfile?.attributeShows || []),
+    attributeShows: normalizeAttributeShowsForSave(editedProfile?.attributeShows || freshProfile?.attributeShows || []),
   };
 }
 
