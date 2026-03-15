@@ -486,12 +486,17 @@ async function saveNullProfileContextToServer() {
     throw new Error("Nullprofile payload missing.");
   }
 
+  const currentInvokeData = {
+    ...cloneJson(rawProfile),
+    attributeShows: cloneJson(appState.nullProfileShows || []),
+  };
+
   await saveProfileViaWsapiRefresh({
     token,
     baseUrl,
     sourceInvoker,
     stepInvokerTemplate: stepInvoker,
-    currentInvokeData: rawProfile,
+    currentInvokeData,
   });
 }
 
