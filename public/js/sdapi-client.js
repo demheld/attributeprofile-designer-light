@@ -8,6 +8,34 @@ export function createSdapiClient(options) {
     extractConditionalRules,
   } = options;
 
+  async function parseResponsePayload(response) {
+    const text = await response.text();
+    try {
+      return JSON.parse(text || "{}");
+    } catch {
+      return { raw: text };
+    }
+  }
+
+  function buildRequestError(url, response, payload) {
+    const status = Number(response?.status || payload?.status || 0);
+    let message = String(payload?.error || "").trim();
+
+    if (!message && (status === 401 || status === 403)) {
+      message = "JWT ist abgelaufen oder ungueltig. Bitte erneut einloggen und den Vorgang nochmal starten.";
+    }
+
+    if (!message) {
+      message = `Request failed for ${url}`;
+    }
+
+    const error = new Error(message);
+    error.status = status;
+    error.payload = payload;
+    error.url = url;
+    return error;
+  }
+
   async function apiPostJson(url, body) {
     const response = await fetch(url, {
       method: "POST",
@@ -15,9 +43,9 @@ export function createSdapiClient(options) {
       body: JSON.stringify(body),
     });
 
-    const payload = await response.json();
+    const payload = await parseResponsePayload(response);
     if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || `Request failed for ${url}`);
+      throw buildRequestError(url, response, payload);
     }
 
     return payload;
@@ -30,9 +58,9 @@ export function createSdapiClient(options) {
       body: JSON.stringify(body),
     });
 
-    const payload = await response.json();
+    const payload = await parseResponsePayload(response);
     if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || `Request failed for ${url}`);
+      throw buildRequestError(url, response, payload);
     }
 
     return payload;
