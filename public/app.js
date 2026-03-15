@@ -486,37 +486,13 @@ async function saveNullProfileContextToServer() {
     throw new Error("Nullprofile payload missing.");
   }
 
-  const profilePayload = JSON.parse(JSON.stringify(rawProfile));
-  const payload = {
-    ...stepInvoker,
-    t: "StepInvoker",
-    objId: stepInvoker.objId ?? sourceInvoker.objId,
-    activityId: stepInvoker.activityId ?? sourceInvoker.activityId,
-    parentId: stepInvoker.parentId ?? sourceInvoker.parentId ?? 0,
-    methodId: stepInvoker.methodId ?? sourceInvoker.methodId,
-    parameters: profilePayload,
-  };
-
-  const res = await fetch(`/api/wsapi-call?baseUrl=${encodeURIComponent(baseUrl)}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+  await saveProfileViaWsapiRefresh({
+    token,
+    baseUrl,
+    sourceInvoker,
+    stepInvokerTemplate: stepInvoker,
+    currentInvokeData: rawProfile,
   });
-
-  const text = await res.text();
-  let data = {};
-  try {
-    data = JSON.parse(text || "{}");
-  } catch {
-    data = { raw: text };
-  }
-
-  if (!res.ok || !data.ok) {
-    throw new Error(`Save failed (HTTP ${data.status || res.status}).`);
-  }
 }
 
 function fillTagDropdown(selectedValue = "") {
@@ -1815,6 +1791,119 @@ function extractShows(data) {
   }
 
   return [];
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function findObjectByType(data, typeName) {
+  if (!data || typeof data !== "object") return null;
+  if (data.t === typeName) return data;
+
+  for (const val of Object.values(data)) {
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        const found = findObjectByType(item, typeName);
+        if (found) return found;
+      }
+    } else if (val && typeof val === "object") {
+      const found = findObjectByType(val, typeName);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+async function postWsapiCall(token, baseUrl, payload) {
+  const response = await fetch(`/api/wsapi-call?baseUrl=${encodeURIComponent(baseUrl)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  let parsed = {};
+  try {
+    parsed = JSON.parse(text || "{}");
+  } catch {
+    parsed = { raw: text };
+  }
+
+  if (!response.ok || !parsed.ok) {
+    const status = parsed.status || response.status;
+    throw new Error(parsed.error || `Save failed (HTTP ${status}).`);
+  }
+
+  return parsed;
+}
+
+function normalizeProfileSaveId(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  return value;
+}
+
+function buildProfileRefreshInvoker(profileId) {
+  return {
+    t: "Invoker",
+    shortcut: "NONE",
+    objId: normalizeProfileSaveId(profileId),
+    activityId: 10070052,
+    methodId: 10010098,
+    parentId: 10090021,
+    methodName: "10010098",
+    reference: null,
+    target: null,
+  };
+}
+
+function mergeEditedAttributeProfile(freshData, editedProfile) {
+  const freshEditResponse = findObjectByType(freshData, "AttributeProfileEditResponse");
+  const freshProfile = freshEditResponse?.attributeProfile || freshData?.attributeProfile || {};
+  const mergedProfile = {
+    ...cloneJson(freshProfile),
+    ...cloneJson(editedProfile),
+  };
+  mergedProfile.attributeShows = cloneJson(editedProfile?.attributeShows || freshProfile?.attributeShows || []);
+  return mergedProfile;
+}
+
+async function saveProfileViaWsapiRefresh({ token, baseUrl, sourceInvoker, stepInvokerTemplate, currentInvokeData }) {
+  const editedProfile = currentInvokeData?.attributeProfile || currentInvokeData;
+  if (!editedProfile || typeof editedProfile !== "object") {
+    throw new Error("Attribute profile payload missing.");
+  }
+
+  const profileId = editedProfile.id ?? stepInvokerTemplate?.objId ?? sourceInvoker?.objId;
+  if (!profileId) {
+    throw new Error("Attribute profile id missing.");
+  }
+
+  const refreshResponse = await postWsapiCall(token, baseUrl, buildProfileRefreshInvoker(profileId));
+  const freshData = refreshResponse.data;
+  const freshStepInvoker = findStepInvoker(freshData);
+  if (!freshStepInvoker || !freshStepInvoker.txnId) {
+    throw new Error("Fresh txnId missing in wsapi response.");
+  }
+
+  const payload = {
+    ...cloneJson(freshStepInvoker),
+    t: "StepInvoker",
+    shortcut: freshStepInvoker.shortcut || "NONE",
+    objId: freshStepInvoker.objId ?? stepInvokerTemplate?.objId ?? sourceInvoker?.objId ?? normalizeProfileSaveId(profileId),
+    activityId: freshStepInvoker.activityId ?? stepInvokerTemplate?.activityId ?? sourceInvoker?.activityId ?? 10070052,
+    parentId: freshStepInvoker.parentId ?? stepInvokerTemplate?.parentId ?? sourceInvoker?.parentId ?? 10090021,
+    methodId: freshStepInvoker.methodId ?? stepInvokerTemplate?.methodId ?? sourceInvoker?.methodId ?? 10010098,
+    stepNo: freshStepInvoker.stepNo ?? stepInvokerTemplate?.stepNo ?? 1,
+    parameters: mergeEditedAttributeProfile(freshData, editedProfile),
+  };
+
+  return postWsapiCall(token, baseUrl, payload);
 }
 
 function extractProfileName(data) {
@@ -4032,43 +4121,20 @@ sendToServerBtn.addEventListener("click", async () => {
   }
 
   const rawProfile = appState.invokeData.attributeProfile || appState.invokeData;
-  const profilePayload = JSON.parse(JSON.stringify(rawProfile));
-  const payload = {
-    ...stepInvoker,
-    t: "StepInvoker",
-    objId: stepInvoker.objId ?? sourceInvoker.objId,
-    activityId: stepInvoker.activityId ?? sourceInvoker.activityId,
-    parentId: stepInvoker.parentId ?? sourceInvoker.parentId ?? 0,
-    methodId: stepInvoker.methodId ?? sourceInvoker.methodId,
-    parameters: profilePayload,
-  };
 
   try {
     sendToServerBtn.disabled = true;
-    sendStatus.textContent = "Sending attribute profile via wsapi/call ...";
+    sendStatus.textContent = "Refreshing profile session and saving via wsapi/call ...";
 
-    const res = await fetch(`/api/wsapi-call?baseUrl=${encodeURIComponent(baseUrl)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
+    await saveProfileViaWsapiRefresh({
+      token,
+      baseUrl,
+      sourceInvoker,
+      stepInvokerTemplate: stepInvoker,
+      currentInvokeData: rawProfile,
     });
 
-    const text = await res.text();
-    let data = {};
-    try {
-      data = JSON.parse(text || "{}");
-    } catch {
-      data = { raw: text };
-    }
-    if (!res.ok || !data.ok) {
-      sendStatus.textContent = `Send failed (HTTP ${data.status || res.status}).`;
-      return;
-    }
-
-    sendStatus.textContent = "Sent successfully via wsapi/call.";
+    sendStatus.textContent = "Sent successfully via two-step wsapi/call.";
   } catch (err) {
     sendStatus.textContent = `Send failed: ${err.message}`;
   } finally {
