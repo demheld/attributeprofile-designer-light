@@ -1906,7 +1906,7 @@ async function saveProfileViaWsapiRefresh({ token, baseUrl, sourceInvoker, stepI
     parentId: freshStepInvoker.parentId ?? stepInvokerTemplate?.parentId ?? sourceInvoker?.parentId ?? 10090021,
     methodId: freshStepInvoker.methodId ?? stepInvokerTemplate?.methodId ?? sourceInvoker?.methodId ?? 10010098,
     stepNo: freshStepInvoker.stepNo ?? stepInvokerTemplate?.stepNo ?? 1,
-    parameters: mergeEditedAttributeProfile(freshData, editedProfile),
+    parameters: { APEDIT: mergeEditedAttributeProfile(freshData, editedProfile) },
   };
 
   return postWsapiCall(token, baseUrl, payload);
