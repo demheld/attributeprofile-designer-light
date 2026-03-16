@@ -1,4 +1,50 @@
 import { createSdapiClient } from "/js/sdapi-client.js";
+import {
+  findAttributeValues,
+  findCreateValueListInvoker,
+  findInvoker,
+  findInvokerByMethods,
+  findInvokerByPredicate,
+  findInvokersByMethodsAll,
+  findStepInvoker,
+  normalizeMethodName,
+} from "/js/tree-walker.js";
+import { parseTagPrefs, serializeTagPrefs } from "/js/tag-prefs.js";
+import { createStorageService, getUrlParamValue } from "/js/storage.js";
+import { createNoticeService } from "/js/notices.js";
+import {
+  escapeHtml as esc,
+} from "/js/field-card-factory.js";
+import {
+  buildProfileRefreshInvoker,
+  cloneJson,
+  extractProfileName,
+  extractShows,
+  mergeEditedAttributeProfile,
+  normalizeProfileSaveId,
+} from "/js/profile-model.js";
+import {
+  fillCreateEntryStepParameters,
+  fillValueListCreateParameters,
+  getParameterObjectValue,
+  resolveParameterKey,
+  resolvePreferredConditionalTargetKey,
+  setParameterObjectValue,
+  setValueInObjectRecursive,
+} from "/js/parameter-model.js";
+import {
+  areDependenciesEqual,
+  cloneDependenciesMap,
+  evaluateConditionalEligibility,
+  evaluateTagForConditional,
+  extractConditionalListItems,
+} from "/js/conditional-model.js";
+import { createSectionRenderer, fieldStateClass } from "/js/section-renderer.js";
+import {
+  getFieldRect,
+  getGroupingConfig,
+} from "/js/grid-geometry.js";
+import { createBodyGridRenderer } from "/js/body-grid-renderer.js";
 
 // -- DOM refs -----------------------------------------------------------------
 const mainForm = document.getElementById("mainForm");
@@ -20,6 +66,17 @@ const rawOutput = document.getElementById("rawOutput");
 const datenkontextBtn = document.getElementById("datenkontextBtn");
 const sendToServerBtn = document.getElementById("sendToServerBtn");
 const sendStatus = document.getElementById("sendStatus");
+
+const { showStatus, showCenterNotice, hideStatus } = createNoticeService({
+  documentRef: document,
+  statusBanner,
+});
+
+const { saveFormToStorage, restoreFormFromStorage } = createStorageService({
+  documentRef: document,
+  locationRef: window.location,
+  storageRef: localStorage,
+});
 
 const fieldEditorModal = document.getElementById("fieldEditorModal");
 const fieldEditorMeta = document.getElementById("fieldEditorMeta");
@@ -221,86 +278,35 @@ const appState = {
   },
 };
 
-// -- localStorage helpers ------------------------------------------------------
-const LS_BASE_URL = "tie_baseUrl";
-const LS_OBJ_ID = "tie_objId";
-const LS_NULL_OBJ_ID = "tie_nullProfileObjId";
-const LS_OBJ_CLASS_ID = "tie_objClassId";
+const { renderHeaderSection, renderOtherSection, renderFieldTable } = createSectionRenderer({
+  headerFields,
+  otherFields,
+  fieldTableBody,
+  attachSelectPreview,
+  onOpenEditor: openFieldEditor,
+  onInsertField: insertFieldForCard,
+  onRemoveField: removeFieldFromProfile,
+  getShows: () => appState.shows,
+  getTableSort: () => appState.tableSort,
+});
 
-function getUrlParamValue(params, keys) {
-  const normalizedKeySet = new Set(keys.map((key) => String(key).toLowerCase()));
-
-  for (const [paramKey, paramValue] of params.entries()) {
-    if (!normalizedKeySet.has(String(paramKey).toLowerCase())) continue;
-    const value = String(paramValue || "").trim();
-    if (value) return value;
-  }
-
-  return "";
-}
-
-function saveFormToStorage() {
-  const token = document.getElementById("token").value.trim();
-  const baseUrl = document.getElementById("baseUrl").value.trim();
-  const objId = document.getElementById("objId").value.trim();
-  const nullProfileObjId = document.getElementById("nullProfileObjId").value.trim();
-  const objClassId = document.getElementById("objClassId")?.value.trim() || "";
-  if (token) localStorage.setItem("tie_token", token);
-  if (baseUrl) localStorage.setItem(LS_BASE_URL, baseUrl);
-  if (objId) localStorage.setItem(LS_OBJ_ID, objId);
-  localStorage.setItem(LS_NULL_OBJ_ID, nullProfileObjId);
-  localStorage.setItem(LS_OBJ_CLASS_ID, objClassId);
-}
-
-function restoreFormFromStorage() {
-  const token = localStorage.getItem("tie_token") || "";
-  let baseUrl = localStorage.getItem(LS_BASE_URL) || "";
-  let objId = localStorage.getItem(LS_OBJ_ID) || "";
-  let nullProfileObjIdValue = localStorage.getItem(LS_NULL_OBJ_ID) || "";
-  let objClassId = localStorage.getItem(LS_OBJ_CLASS_ID) || "";
-
-  try {
-    const params = new URLSearchParams(window.location.search || "");
-    const objIdFromUrl = getUrlParamValue(params, ["objId", "objectId"]);
-    const objClassIdFromUrl = getUrlParamValue(params, ["objClassId", "objektklassenId", "objectClassId"]);
-    const nullProfileObjIdFromUrl = getUrlParamValue(params, [
-      "nullProfileObjId",
-      "nullprofileObjId",
-      "nullprofileobjid",
-      "nullProfileId",
-      "nullprofileid",
-      "nullObjId",
-    ]);
-
-    if (objIdFromUrl) {
-      objId = objIdFromUrl;
-      localStorage.setItem(LS_OBJ_ID, objId);
-    }
-    if (objClassIdFromUrl) {
-      objClassId = objClassIdFromUrl;
-      localStorage.setItem(LS_OBJ_CLASS_ID, objClassId);
-    }
-    if (nullProfileObjIdFromUrl) {
-      nullProfileObjIdValue = nullProfileObjIdFromUrl;
-      localStorage.setItem(LS_NULL_OBJ_ID, nullProfileObjIdValue);
-    }
-  } catch {
-    // ignore invalid search params
-  }
-
-  if (baseUrl === "https://p-p.portal.tie.ch/rest2/sdapi/0.1") {
-    baseUrl = "https://kundenportal.tie.ch/rest2/sdapi/0.1";
-    localStorage.setItem(LS_BASE_URL, baseUrl);
-  }
-
-  if (baseUrl) document.getElementById("baseUrl").value = baseUrl;
-  if (token) document.getElementById("token").value = token;
-  if (objId) document.getElementById("objId").value = objId;
-  if (nullProfileObjIdValue) document.getElementById("nullProfileObjId").value = nullProfileObjIdValue;
-  if (objClassId && document.getElementById("objClassId")) document.getElementById("objClassId").value = objClassId;
-
-  return { token, baseUrl, objId, objClassId };
-}
+const { renderBodyGrid } = createBodyGridRenderer({
+  documentRef: document,
+  formGrid,
+  bodyLabel,
+  getState: () => appState,
+  getShows: () => appState.shows,
+  onInsertFieldAtPosition: insertFieldAtPosition,
+  onInsertFieldAtEdge: insertFieldAtEdge,
+  onRemoveField: removeFieldFromProfile,
+  onAttachSelectPreview: attachSelectPreview,
+  onOpenFieldEditor: openFieldEditor,
+  onRemoveBodyColumn: removeBodyColumn,
+  onRemoveBodyRow: removeBodyRow,
+  onRenderCurrentProfile: () => {
+    if (appState.invokeData) renderProfile(appState.invokeData);
+  },
+});
 
 /**
  * Build the URL for auth-service login.
@@ -333,43 +339,6 @@ function buildAuthServiceUrl(rawBaseUrl, application = "auth-service", path = "/
 }
 
 // -- Auth flow ------------------------------------------------------------------
-// -- Status helpers -------------------------------------------------------------
-function showStatus(msg, type = "info") {
-  statusBanner.textContent = msg;
-  statusBanner.className = `status-banner ${type}`;
-}
-
-let centerNoticeTimer = null;
-
-function showCenterNotice(msg, type = "info", timeoutMs = 2000) {
-  let notice = document.getElementById("centerNotice");
-  if (!notice) {
-    notice = document.createElement("div");
-    notice.id = "centerNotice";
-    notice.className = "center-notice hidden";
-    notice.innerHTML = `
-      <div class="center-notice-card">
-        <p class="center-notice-text" id="centerNoticeText"></p>
-      </div>
-    `;
-    document.body.appendChild(notice);
-  }
-
-  const text = notice.querySelector("#centerNoticeText");
-  if (text) text.textContent = msg;
-  notice.className = `center-notice ${type}`;
-
-  if (centerNoticeTimer) {
-    clearTimeout(centerNoticeTimer);
-  }
-  centerNoticeTimer = setTimeout(() => {
-    notice.className = "center-notice hidden";
-  }, Math.max(800, Number(timeoutMs) || 2000));
-}
-
-function hideStatus() {
-  statusBanner.className = "status-banner hidden";
-}
 
 function buildNullProfileAttributeOptions(shows) {
   const byAttributeName = new Map();
@@ -604,10 +573,6 @@ function fillTagDropdown(selectedValue = "") {
 
 async function loadProfileByObjectId(token, baseUrl, objId) {
   return sdapiClient.loadProfileByObjectId(token, baseUrl, objId);
-}
-
-function nowMs() {
-  return Date.now();
 }
 
 function applyTagPreset(tagValue) {
@@ -1137,173 +1102,7 @@ if (sampleProfileBtn) {
   });
 }
 
-// -- Escape HTML ----------------------------------------------------------------
-function esc(val) {
-  return String(val === null || val === undefined ? "" : val)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 // -- Geometry helpers -----------------------------------------------------------
-function getFieldRect(field) {
-  const h = Math.max(1, Number(field.hpos) || 1);
-  const v = Math.max(1, Number(field.vpos) || 1);
-  const c = Math.max(1, Number(field.colspan) || 1);
-  const r = Math.max(1, Number(field.rowspan) || 1);
-  return { left: h, top: v, right: h + c - 1, bottom: v + r - 1 };
-}
-
-function intersects(a, b) {
-  return !(a.right < b.left || b.right < a.left || a.bottom < b.top || b.bottom < a.top);
-}
-
-function normalizeFieldPosition(field, maxCols) {
-  const colspan = Math.max(1, Number(field.colspan) || 1);
-  const maxLeft = Math.max(1, maxCols - colspan + 1);
-  field.hpos = Math.max(1, Math.min(maxLeft, Number(field.hpos) || 1));
-  field.vpos = Math.max(1, Number(field.vpos) || 1);
-}
-
-// Push overlapping fields down until there are no collisions.
-function resolveNoOverlap(fields, pinnedField, maxCols) {
-  fields.forEach((f) => normalizeFieldPosition(f, maxCols));
-
-  let changed = true;
-  let safety = 0;
-  while (changed && safety < 500) {
-    changed = false;
-    safety += 1;
-
-    for (const field of fields) {
-      if (field === pinnedField) continue;
-      if (intersects(getFieldRect(field), getFieldRect(pinnedField))) {
-        field.vpos = getFieldRect(pinnedField).bottom + 1;
-        changed = true;
-      }
-    }
-
-    for (let i = 0; i < fields.length; i += 1) {
-      for (let j = i + 1; j < fields.length; j += 1) {
-        const a = fields[i];
-        const b = fields[j];
-        if (a === pinnedField || b === pinnedField) continue;
-        if (intersects(getFieldRect(a), getFieldRect(b))) {
-          b.vpos = getFieldRect(a).bottom + 1;
-          changed = true;
-        }
-      }
-    }
-  }
-}
-
-function getOrCreateSnapIndicator(gridElement) {
-  if (!appState.snapIndicatorEl) {
-    const node = document.createElement("div");
-    node.className = "snap-indicator hidden";
-    appState.snapIndicatorEl = node;
-  }
-  if (appState.snapIndicatorEl.parentElement !== gridElement) {
-    appState.snapIndicatorEl.remove();
-    gridElement.appendChild(appState.snapIndicatorEl);
-  }
-  return appState.snapIndicatorEl;
-}
-
-function hideSnapIndicator() {
-  if (appState.snapIndicatorEl) {
-    appState.snapIndicatorEl.classList.add("hidden");
-  }
-}
-
-function clearPushPreview() {
-  document.querySelectorAll(".field-card.push-preview").forEach((el) => {
-    el.classList.remove("push-preview");
-  });
-}
-
-function showPushPreview(indices) {
-  clearPushPreview();
-  indices.forEach((idx) => {
-    const card = document.querySelector(`.field-card[data-field-index="${idx}"]`);
-    if (card) card.classList.add("push-preview");
-  });
-}
-
-function simulatePushPreview(pool, movedField, nextH, nextV, maxCols) {
-  const clones = pool.map((f) => ({
-    __idx: appState.shows.indexOf(f),
-    hpos: Number(f.hpos) || 1,
-    vpos: Number(f.vpos) || 1,
-    colspan: Number(f.colspan) || 1,
-    rowspan: Number(f.rowspan) || 1,
-  }));
-
-  const movedIdx = appState.shows.indexOf(movedField);
-  const movedClone = clones.find((c) => c.__idx === movedIdx);
-  if (!movedClone) return [];
-
-  movedClone.hpos = nextH;
-  movedClone.vpos = nextV;
-  resolveNoOverlap(clones, movedClone, maxCols);
-
-  return clones
-    .filter((c) => c.__idx !== movedIdx)
-    .filter((c) => {
-      const original = appState.shows[c.__idx];
-      return original && (Number(original.vpos) !== c.vpos || Number(original.hpos) !== c.hpos);
-    })
-    .map((c) => c.__idx);
-}
-
-function showSnapIndicator(gridElement, localH, localV, colspan, rowspan, maxCols) {
-  const indicator = getOrCreateSnapIndicator(gridElement);
-  const rect = gridElement.getBoundingClientRect();
-  const colWidth = rect.width / Math.max(1, maxCols);
-  const gap = 8;
-
-  const h = Math.max(1, Math.min(maxCols, localH));
-  const v = Math.max(1, localV);
-
-  indicator.style.left = `${(h - 1) * colWidth}px`;
-  indicator.style.top = `${(v - 1) * appState.dragRowHeight}px`;
-  indicator.style.width = `${Math.max(10, colWidth * Math.max(1, colspan) - gap)}px`;
-  indicator.style.height = `${Math.max(10, appState.dragRowHeight * Math.max(1, rowspan) - gap)}px`;
-  indicator.classList.remove("hidden");
-}
-
-function moveFieldToGridPosition(field, gridElement, event, maxCols, minH = 1, minV = 1) {
-  const rect = gridElement.getBoundingClientRect();
-  const x = Math.max(0, Math.min(rect.width - 1, event.clientX - rect.left));
-  const y = Math.max(0, event.clientY - rect.top);
-  const colWidth = rect.width / Math.max(1, maxCols);
-
-  const localH = Math.max(1, Math.floor(x / Math.max(1, colWidth)) + 1);
-  const localV = Math.max(1, Math.floor(y / appState.dragRowHeight) + 1);
-
-  field.hpos = minH + localH - 1;
-  field.vpos = minV + localV - 1;
-}
-
-function beginDragField(event, index) {
-  appState.dragFieldIndex = index;
-  appState.dragging = true;
-  event.dataTransfer.setData("text/plain", String(index));
-  event.dataTransfer.effectAllowed = "move";
-  event.currentTarget.classList.add("is-dragging");
-}
-
-function endDragField(event) {
-  event.currentTarget.classList.remove("is-dragging");
-  appState.dragging = false;
-  appState.dragFieldIndex = -1;
-  appState.dragSuppressClickUntil = nowMs() + 140;
-  formGrid.classList.remove("drop-target-active");
-  hideSnapIndicator();
-  clearPushPreview();
-}
-
 // -- Field editor ---------------------------------------------------------------
 function generateExpertFormControls(field) {
   const container = document.getElementById('expertFormControls');
@@ -1944,112 +1743,6 @@ if (saveDatenkontextBtn) {
   });
 }
 
-// -- Data extraction ------------------------------------------------------------
-function findInvoker(data, methodName) {
-  if (!data || typeof data !== "object") return null;
-  if (data.methodName === methodName) return data;
-
-  for (const val of Object.values(data)) {
-    if (Array.isArray(val)) {
-      for (const item of val) {
-        const found = findInvoker(item, methodName);
-        if (found) return found;
-      }
-    } else if (val && typeof val === "object") {
-      const found = findInvoker(val, methodName);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-function findStepInvoker(data) {
-  if (!data || typeof data !== "object") return null;
-
-  if (data.t === "StepInvoker") return data;
-  if (data.stepInvoker && typeof data.stepInvoker === "object") return data.stepInvoker;
-  if (data.txnId && data.stepNo !== undefined && data.objId !== undefined && data.activityId !== undefined) return data;
-
-  for (const val of Object.values(data)) {
-    if (Array.isArray(val)) {
-      for (const item of val) {
-        const found = findStepInvoker(item);
-        if (found) return found;
-      }
-    } else if (val && typeof val === "object") {
-      const found = findStepInvoker(val);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-function findAttributeValues(data) {
-  if (!data || typeof data !== "object") return null;
-
-  if (data.attributeValues && typeof data.attributeValues === "object" && !Array.isArray(data.attributeValues)) {
-    return data.attributeValues;
-  }
-
-  for (const val of Object.values(data)) {
-    if (Array.isArray(val)) {
-      for (const item of val) {
-        const found = findAttributeValues(item);
-        if (found) return found;
-      }
-    } else if (val && typeof val === "object") {
-      const found = findAttributeValues(val);
-      if (found) return found;
-    }
-  }
-
-  return null;
-}
-
-function extractShows(data) {
-  if (!data || typeof data !== "object") return [];
-
-  if (data.attributeProfile && Array.isArray(data.attributeProfile.attributeShows)) {
-    return data.attributeProfile.attributeShows;
-  }
-
-  if (Array.isArray(data.attributeShows)) {
-    return data.attributeShows;
-  }
-
-  for (const val of Object.values(data)) {
-    if (val && typeof val === "object") {
-      const found = extractShows(val);
-      if (found.length) return found;
-    }
-  }
-
-  return [];
-}
-
-function cloneJson(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function findObjectByType(data, typeName) {
-  if (!data || typeof data !== "object") return null;
-  if (data.t === typeName) return data;
-
-  for (const val of Object.values(data)) {
-    if (Array.isArray(val)) {
-      for (const item of val) {
-        const found = findObjectByType(item, typeName);
-        if (found) return found;
-      }
-    } else if (val && typeof val === "object") {
-      const found = findObjectByType(val, typeName);
-      if (found) return found;
-    }
-  }
-
-  return null;
-}
-
 async function postWsapiCall(token, baseUrl, payload) {
   const response = await fetch(`/api/wsapi-call?baseUrl=${encodeURIComponent(baseUrl)}`, {
     method: "POST",
@@ -2074,54 +1767,6 @@ async function postWsapiCall(token, baseUrl, payload) {
   }
 
   return parsed;
-}
-
-function normalizeProfileSaveId(value) {
-  const numeric = Number(value);
-  if (Number.isFinite(numeric) && numeric > 0) return numeric;
-  return value;
-}
-
-function buildProfileRefreshInvoker(profileId) {
-  return {
-    t: "Invoker",
-    shortcut: "NONE",
-    objId: normalizeProfileSaveId(profileId),
-    activityId: 10070052,
-    methodId: 10010098,
-    parentId: 10090021,
-    methodName: "10010098",
-    reference: null,
-    target: null,
-  };
-}
-
-function normalizeAttributeShowsForSave(attributeShows) {
-  if (!Array.isArray(attributeShows)) return [];
-  return attributeShows.map((field) => {
-    const nextField = cloneJson(field || {});
-    if (nextField.popupObjId === null || nextField.popupObjId === undefined || String(nextField.popupObjId).trim() === "") {
-      nextField.popupObjId = 0;
-    }
-    return nextField;
-  });
-}
-
-function mergeEditedAttributeProfile(freshData, editedProfile) {
-  const freshEditResponse = findObjectByType(freshData, "AttributeProfileEditResponse");
-  const freshProfile = freshEditResponse?.attributeProfile || freshData?.attributeProfile || null;
-  if (!freshProfile || typeof freshProfile !== "object") {
-    return {
-      t: "AttributeProfileDO",
-      ...cloneJson(editedProfile || {}),
-      attributeShows: normalizeAttributeShowsForSave(editedProfile?.attributeShows || []),
-    };
-  }
-
-  return {
-    ...cloneJson(freshProfile),
-    attributeShows: normalizeAttributeShowsForSave(editedProfile?.attributeShows || freshProfile?.attributeShows || []),
-  };
 }
 
 async function saveProfileViaWsapiRefresh({ token, baseUrl, sourceInvoker, stepInvokerTemplate, currentInvokeData }) {
@@ -2157,44 +1802,6 @@ async function saveProfileViaWsapiRefresh({ token, baseUrl, sourceInvoker, stepI
   return postWsapiCall(token, baseUrl, payload);
 }
 
-function extractProfileName(data) {
-  if (!data) return "(unknown)";
-  if (data.attributeProfile?.name) return data.attributeProfile.name;
-  if (data.name) return data.name;
-  return "(unnamed profile)";
-}
-
-function parseTagPrefs(rawPrefs) {
-  if (!rawPrefs) return {};
-  if (typeof rawPrefs === "object") return rawPrefs;
-
-  const prefs = {};
-  const chunks = String(rawPrefs)
-    .replace(/[;,\n]/g, " ")
-    .split(/\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  chunks.forEach((entry) => {
-    const parts = entry.split("=");
-    if (parts.length < 2) return;
-    const key = parts[0].trim();
-    const value = parts.slice(1).join("=").trim();
-    if (key) prefs[key] = value;
-  });
-
-  return prefs;
-}
-
-function serializeTagPrefs(rawPrefs, prefs) {
-  if (rawPrefs && typeof rawPrefs === "object") return prefs;
-
-  return Object.entries(prefs || {})
-    .filter(([key]) => String(key || "").trim())
-    .map(([key, value]) => `${key}=${value}`)
-    .join(" ");
-}
-
 function setFieldConditionalValueListReference(field, listObjId) {
   const nextObjId = String(listObjId || "").trim();
   if (!field || !nextObjId) return;
@@ -2220,108 +1827,6 @@ function removeConditionalValueListReference(field) {
   delete parsedPrefs.conditionalValueList;
   delete parsedPrefs.conditional_value_list;
   field[targetKey] = serializeTagPrefs(rawPrefs, parsedPrefs);
-}
-
-function normalizeMethodName(name) {
-  return String(name || "").trim().toLowerCase().replace(/\s+/g, "");
-}
-
-function findInvokerByMethods(data, candidates) {
-  const wanted = candidates.map(normalizeMethodName);
-
-  function walk(node) {
-    if (!node || typeof node !== "object") return null;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = walk(item);
-        if (found) return found;
-      }
-      return null;
-    }
-
-    const methodName = normalizeMethodName(node.methodName);
-    if (methodName && wanted.includes(methodName)) {
-      return node;
-    }
-
-    for (const value of Object.values(node)) {
-      const found = walk(value);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  return walk(data);
-}
-
-function splitSpaceSeparatedDependencies(raw) {
-  return String(raw || "")
-    .split(/\s+/)
-    .map((entry) => normalizeAttributeKey(entry))
-    .filter(Boolean);
-}
-
-function extractConditionalListItems(data) {
-  const results = [];
-
-  function walk(node) {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-
-    if (String(node.t || "").toUpperCase() === "OBJLIST" && Array.isArray(node.items)) {
-      const attrNames = Array.isArray(node.attrNames) ? node.attrNames.map((name) => String(name || "").trim()) : [];
-      const normalizedHeaders = attrNames.map((name) => name.toLowerCase());
-      const keyIndex = normalizedHeaders.findIndex((name) => ["bezeichnung", "key", "name", "anzeigewert"].includes(name));
-      const valueIndex = normalizedHeaders.findIndex((name) => ["beschreibung", "value", "description", "descr"].includes(name));
-      const resolvedKeyIndex = keyIndex >= 0 ? keyIndex : 0;
-      const resolvedValueIndex = valueIndex >= 0 ? valueIndex : -1;
-
-      node.items.forEach((item) => {
-        const isValueList = String(item?.objclass?.type || "").toUpperCase() === "VALUE_LIST";
-        if (!isValueList || !Array.isArray(item.attrValues)) return;
-
-        const keyName = attrNames[resolvedKeyIndex] || "bezeichnung";
-        const valueName = valueIndex >= 0 ? (attrNames[resolvedValueIndex] || "beschreibung") : "beschreibung";
-        const key = String(item.attrValues[resolvedKeyIndex] || item.objName || item.obj_name || "").trim();
-        if (!key) return;
-
-        const rawDependencies = resolvedValueIndex >= 0
-          ? String(item.attrValues[resolvedValueIndex] || "").trim()
-          : "";
-        results.push({
-          key,
-          objId: item.objId,
-          objName: String(item.objName || item.obj_name || key).trim(),
-          keyAttributeName: keyName,
-          dependencyAttributeName: valueName,
-          dependencyRawValue: rawDependencies,
-          dependencies: splitSpaceSeparatedDependencies(rawDependencies),
-        });
-      });
-    }
-
-    Object.values(node).forEach(walk);
-  }
-
-  walk(data);
-  return results;
-}
-
-function cloneDependenciesMap(source) {
-  const out = {};
-  Object.entries(source || {}).forEach(([key, value]) => {
-    out[key] = Array.isArray(value) ? [...value] : [];
-  });
-  return out;
-}
-
-function areDependenciesEqual(a, b) {
-  const left = Array.isArray(a) ? [...a].sort() : [];
-  const right = Array.isArray(b) ? [...b].sort() : [];
-  return left.length === right.length && left.every((entry, idx) => entry === right[idx]);
 }
 
 function getProfileAttributeOptions() {
@@ -2409,82 +1914,12 @@ function syncConditionalConfigVisibility() {
   if (conditionalChoiceSection) conditionalChoiceSection.classList.toggle("hidden", !hasListObjId);
 }
 
-function collectObjListItems(data) {
-  const out = [];
-
-  function walk(node) {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-
-    if (String(node.t || "").toUpperCase() === "OBJLIST" && Array.isArray(node.items)) {
-      out.push(...node.items);
-    }
-
-    Object.values(node).forEach(walk);
-  }
-
-  walk(data);
-  return out;
-}
-
-function hasValueListInObjListInvokeResponse(data) {
-  let foundObjList = false;
-  let foundValueList = false;
-
-  function walk(node) {
-    if (!node || typeof node !== "object" || foundValueList) return;
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-
-    const nodeType = String(node.t || "").trim().toUpperCase();
-    if (nodeType === "OBJLIST" && Array.isArray(node.items)) {
-      foundObjList = true;
-      const hasMatch = node.items.some(
-        (item) => String(item?.objclass?.type || "").trim().toUpperCase() === "VALUE_LIST"
-      );
-      if (hasMatch) {
-        foundValueList = true;
-        return;
-      }
-    }
-
-    Object.values(node).forEach(walk);
-  }
-
-  walk(data);
-  return { foundObjList, foundValueList };
-}
-
 function clearObjListLookupCache(objId) {
   const key = String(objId || "").trim();
   if (!key) return;
   delete appState.objListCache[key];
   delete appState.valueListCache[key];
   delete appState.conditionalListCache[key];
-}
-
-function evaluateTagForConditional(field) {
-  const tag = String(field?.tag || "").trim().toUpperCase();
-  if (tag === "SELECT" || tag === "RADIO") {
-    return { ok: true, tag };
-  }
-  return { ok: false, tag };
-}
-
-function evaluateConditionalEligibility(field) {
-  const tagCheck = evaluateTagForConditional(field);
-  const popupObjId = String(field?.popupObjId || "").trim();
-  const ok = tagCheck.ok && /^\d+$/.test(popupObjId) && popupObjId !== "0";
-  return {
-    ok,
-    popupObjId,
-    reasons: ok ? [] : ["Keine Optionen zur Verfügung für Bedingtes Feld. Konfigurieren sie zuerst eine Auswahlliste (tag=SELECT oder RADIO mit popupObjId)."],
-  };
 }
 
 function renderConditionalWarningReasons(reasons) {
@@ -2508,81 +1943,6 @@ function openConditionalWarningDialog(field, reasons) {
   conditionalWarningMeta.textContent = `Feld: ${label}`;
   renderConditionalWarningReasons(reasons);
   conditionalWarningModal.showModal();
-}
-
-function findCreateValueListInvoker(data, allowedReferences = ["CREATE_CLI_SPEC_VALUELIST"]) {
-  const allowed = new Set((allowedReferences || []).map((ref) => String(ref || "").trim().toUpperCase()));
-
-  function walk(node) {
-    if (!node || typeof node !== "object") return null;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = walk(item);
-        if (found) return found;
-      }
-      return null;
-    }
-
-    const methodName = normalizeMethodName(node.methodName);
-    const reference = String(node.reference || "").trim().toUpperCase();
-    if (methodName === normalizeMethodName("Object.Create()") && allowed.has(reference)) {
-      return node;
-    }
-
-    for (const value of Object.values(node)) {
-      const found = walk(value);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  return walk(data);
-}
-
-function findInvokerByPredicate(data, predicate) {
-  function walk(node) {
-    if (!node || typeof node !== "object") return null;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = walk(item);
-        if (found) return found;
-      }
-      return null;
-    }
-
-    if (predicate(node)) return node;
-
-    for (const value of Object.values(node)) {
-      const found = walk(value);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  return walk(data);
-}
-
-function findInvokersByMethodsAll(data, candidates) {
-  const wanted = candidates.map(normalizeMethodName);
-  const found = [];
-
-  function walk(node) {
-    if (!node || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-
-    const methodName = normalizeMethodName(node.methodName);
-    if (methodName && wanted.includes(methodName)) {
-      found.push(node);
-    }
-
-    Object.values(node).forEach(walk);
-  }
-
-  walk(data);
-  return found;
 }
 
 function invokerIdentityKey(invoker) {
@@ -2715,87 +2075,6 @@ async function discoverInvokerFromRoot(rootObjId, predicate, traversedMethodName
   }
 
   throw new Error("Requested invoker was not found after menu and traversal flow.");
-}
-
-function setParameterObjectValue(entry, nextValue) {
-  if (!entry || typeof entry !== "object") {
-    return {
-      t: "StringDO",
-      internalValue: String(nextValue || ""),
-      displayValue: String(nextValue || ""),
-    };
-  }
-
-  const value = String(nextValue || "");
-  if ("valueL0" in entry) entry.valueL0 = value;
-  if ("internalValue" in entry) entry.internalValue = value;
-  if ("displayValue" in entry) entry.displayValue = value;
-  if ("value" in entry) entry.value = value;
-
-  if (!("valueL0" in entry) && !("internalValue" in entry) && !("value" in entry)) {
-    entry.internalValue = value;
-    entry.displayValue = value;
-  }
-
-  return entry;
-}
-
-function findAllParameterKeys(parameters, patterns) {
-  return Object.keys(parameters || {}).filter((key) => patterns.some((pattern) => pattern.test(key)));
-}
-
-function fillCreateEntryStepParameters(parameters, value, description) {
-  const result = JSON.parse(JSON.stringify(parameters || {}));
-  const updatedKeys = [];
-
-  const valuePatterns = [/bezeichnung/i, /anzeigewert/i, /obj_name/i, /(^|\.)name(\[|$)/i, /(^|\.)value(\[|$)/i];
-  const descriptionPatterns = [/beschreibung/i, /description/i, /descr/i];
-
-  const valueKeys = findAllParameterKeys(result, valuePatterns);
-  const descriptionKeys = findAllParameterKeys(result, descriptionPatterns);
-
-  valueKeys.forEach((key) => {
-    result[key] = setParameterObjectValue(result[key], value);
-    updatedKeys.push(key);
-  });
-
-  const descriptionValue = String(description || value || "");
-  descriptionKeys.forEach((key) => {
-    result[key] = setParameterObjectValue(result[key], descriptionValue);
-    updatedKeys.push(key);
-  });
-
-  if (!updatedKeys.length) {
-    const firstKey = Object.keys(result)[0];
-    if (firstKey) {
-      result[firstKey] = setParameterObjectValue(result[firstKey], value);
-      updatedKeys.push(firstKey);
-    } else {
-      result.VALUE = setParameterObjectValue(null, value);
-      updatedKeys.push("VALUE");
-    }
-  }
-
-  return { parameters: result, updatedKeys: Array.from(new Set(updatedKeys)) };
-}
-
-function fillValueListCreateParameters(parameters, field) {
-  const result = JSON.parse(JSON.stringify(parameters || {}));
-  const baseName = String(field?.displayName || field?.attributeName || "Conditional Value List").trim();
-  const description = `${baseName} conditionalValueList`;
-
-  const namePatterns = [/bezeichnung/i, /anzeigewert/i, /obj_name/i, /(^|\.)name(\[|$)/i];
-  const descriptionPatterns = [/beschreibung/i, /description/i, /descr/i];
-
-  findAllParameterKeys(result, namePatterns).forEach((key) => {
-    result[key] = setParameterObjectValue(result[key], baseName);
-  });
-
-  findAllParameterKeys(result, descriptionPatterns).forEach((key) => {
-    result[key] = setParameterObjectValue(result[key], description);
-  });
-
-  return result;
 }
 
 async function createConditionalValueListForField(field) {
@@ -3073,7 +2352,7 @@ async function initConditionalEditorForField(field) {
 
   try {
     const objListData = await loadObjListData(listObjId);
-    const items = extractConditionalListItems(objListData);
+    const items = extractConditionalListItems(objListData, normalizeAttributeKey);
     const dependenciesByKey = {};
     items.forEach((item) => {
       dependenciesByKey[item.key] = [...item.dependencies];
@@ -3236,109 +2515,6 @@ function applyConditionalDepsSelection() {
   updateConditionalChoiceMeta();
 }
 
-function setValueInObjectRecursive(target, keyName, value) {
-  if (!target || typeof target !== "object") return false;
-
-  const wanted = normalizeAttributeKey(keyName);
-
-  function applyValueToAttributeEntry(entry, nextValue) {
-    if (!entry || typeof entry !== "object") return false;
-
-    const type = String(entry.t || "").toUpperCase();
-    if (type === "TEXTMLDO" || "valueL0" in entry) {
-      entry.valueL0 = nextValue;
-      return true;
-    }
-
-    if ("internalValue" in entry) {
-      entry.internalValue = nextValue;
-      if ("displayValue" in entry) entry.displayValue = nextValue;
-      return true;
-    }
-
-    if ("value" in entry) {
-      entry.value = nextValue;
-      return true;
-    }
-
-    return false;
-  }
-
-  for (const [key, val] of Object.entries(target)) {
-    if (normalizeAttributeKey(key) === wanted) {
-      if (typeof val !== "object" || val === null) {
-        target[key] = value;
-        return true;
-      }
-
-      if (applyValueToAttributeEntry(val, value)) {
-        return true;
-      }
-
-      target[key] = value;
-      return true;
-    }
-  }
-
-  for (const nested of Object.values(target)) {
-    if (nested && typeof nested === "object" && setValueInObjectRecursive(nested, keyName, value)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function getParameterObjectValue(entry) {
-  if (!entry || typeof entry !== "object") return "";
-
-  if (typeof entry.valueL0 === "string") return entry.valueL0;
-  if (entry.internalValue !== undefined && entry.internalValue !== null) return String(entry.internalValue);
-  if (entry.value !== undefined && entry.value !== null) return String(entry.value);
-  if (entry.displayValue !== undefined && entry.displayValue !== null) return String(entry.displayValue);
-  return "";
-}
-
-function resolveParameterKey(parameters, attributeNameHint, previousRawValue) {
-  if (!parameters || typeof parameters !== "object") return "";
-
-  const normalizedHint = normalizeAttributeKey(attributeNameHint);
-  const entries = Object.entries(parameters);
-
-  const exactMatch = entries.find(([key]) => normalizeAttributeKey(key) === normalizedHint);
-  if (exactMatch) return exactMatch[0];
-
-  const previous = String(previousRawValue || "").trim();
-  if (previous) {
-    const valueMatches = entries.filter(([, val]) => getParameterObjectValue(val) === previous);
-    if (valueMatches.length === 1) return valueMatches[0][0];
-  }
-
-  const hintLower = String(attributeNameHint || "").trim().toLowerCase();
-  if (["beschreibung", "description", "descr"].includes(hintLower)) {
-    const descrMatch = entries.find(([key]) => /(^|\.)descr(\[|$)/i.test(String(key)));
-    if (descrMatch) return descrMatch[0];
-  }
-
-  const genericDescrMatch = entries.find(([key]) => /(^|\.)descr(\[|$)|description|beschreibung/i.test(String(key)));
-  if (genericDescrMatch) return genericDescrMatch[0];
-
-  return "";
-}
-
-function resolvePreferredConditionalTargetKey(parameters) {
-  const entries = Object.entries(parameters || {});
-  if (!entries.length) return "";
-
-  const objectDescr = entries.find(([key]) => /(^|\.)object\.descr(\[|$)|(^|\.)descr(\[|$)/i.test(String(key)));
-  if (objectDescr) return objectDescr[0];
-
-  const attributeL1 = entries.find(([key]) => /(^|\.)attribute\.l1(\[|$)|(^|\.)l1(\[|$)/i.test(String(key)));
-  if (attributeL1) return attributeL1[0];
-
-  return "";
-}
-
 async function persistConditionalDependencies() {
   const state = appState.conditionalEditor;
   if (!editConditionalField.checked || !state.enabled) return;
@@ -3347,7 +2523,7 @@ async function persistConditionalDependencies() {
 
   delete appState.objListCache[state.listObjId];
   const latestObjListData = await loadObjListData(state.listObjId);
-  const latestItems = extractConditionalListItems(latestObjListData);
+  const latestItems = extractConditionalListItems(latestObjListData, normalizeAttributeKey);
   const latestByKey = new Map(latestItems.map((item) => [item.key, item]));
 
   for (const key of state.dirtyKeys) {
@@ -3393,7 +2569,7 @@ async function persistConditionalDependencies() {
       );
     }
 
-    const updated = setValueInObjectRecursive(stepInvoker.parameters, resolvedAttributeKey, spaceSeparated);
+    const updated = setValueInObjectRecursive(stepInvoker.parameters, resolvedAttributeKey, spaceSeparated, normalizeAttributeKey);
     if (!updated) {
       throw new Error(
         `Resolved parameter '${resolvedAttributeKey}' could not be updated for '${selectedItem.objName || key}'.`
@@ -3410,34 +2586,6 @@ async function persistConditionalDependencies() {
     Object.entries(state.dependenciesByKey).map(([entryKey, deps]) => [entryKey.toUpperCase(), [...deps]])
   );
   delete appState.objListCache[state.listObjId];
-}
-
-function getGroupingConfig(shows) {
-  const groupContainers = shows.filter((s) => String(s.tag || "").toUpperCase() === "GROUPING");
-  const memberShowTypes = new Set();
-
-  const containers = groupContainers
-    .map((container) => {
-      const prefs = parseTagPrefs(container.tagPrefs ?? container.tagPref);
-      const memberType = String(prefs.show_type || prefs.showType || prefs.group_show_type || "").toUpperCase();
-      const defaultOpenRaw = String(prefs.defaultOpen ?? "true").toLowerCase();
-      const defaultOpen = defaultOpenRaw !== "false";
-
-      if (!memberType) return null;
-
-      memberShowTypes.add(memberType);
-      return { container, memberType, defaultOpen };
-    })
-    .filter(Boolean);
-
-  return { containers, memberShowTypes };
-}
-
-function fieldStateClass(show) {
-  if (show.hidden) return "field-hidden";
-  if (show.readonly) return "field-readonly";
-  if (show.mandatory) return "field-mandatory";
-  return "";
 }
 
 function normalizeAttributeKey(value) {
@@ -3746,702 +2894,6 @@ function attachSelectPreview(card, show) {
 }
 
 // -- Rendering ------------------------------------------------------------------
-function renderHeaderSection(shows) {
-  headerFields.innerHTML = "";
-  if (!shows.length) return;
-
-  const label = document.createElement("p");
-  label.className = "section-label";
-  label.textContent = "HEADER";
-  headerFields.appendChild(label);
-
-  const grid = document.createElement("div");
-  grid.className = "header-grid";
-
-  shows
-    .slice()
-    .sort((a, b) => Number(a.seq) - Number(b.seq))
-    .forEach((show) => {
-      const idx = appState.shows.indexOf(show);
-      const cell = document.createElement("div");
-      cell.className = `field-card small ${fieldStateClass(show)}`;
-      cell.innerHTML = `
-        <div class="field-label">${esc(show.displayName || show.attributeName || "")}</div>
-        <div class="field-attr">${esc(show.attributeName || "")}</div>
-        ${show.datatype ? `<span class="field-badge">${esc(show.datatype)}</span>` : ""}
-      `;
-
-      const edgeDirs = [
-        { dir: "top", title: "Feld davor einfuegen" },
-        { dir: "right", title: "Feld danach einfuegen" },
-        { dir: "bottom", title: "Feld danach einfuegen" },
-        { dir: "left", title: "Feld davor einfuegen" },
-      ];
-      edgeDirs.forEach(({ dir, title }) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `edge-insert-btn edge-insert-${dir}`;
-        btn.title = title;
-        btn.setAttribute("aria-label", title);
-        btn.textContent = "+";
-        btn.addEventListener("click", (event) => {
-          event.stopPropagation();
-          insertFieldForCard(show, dir);
-        });
-        cell.appendChild(btn);
-      });
-
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "field-remove-btn";
-      removeBtn.title = "Feld entfernen";
-      removeBtn.setAttribute("aria-label", "Feld entfernen");
-      removeBtn.textContent = "×";
-      removeBtn.addEventListener("click", (event) => {
-        event.stopPropagation();
-        removeFieldFromProfile(show);
-      });
-      cell.appendChild(removeBtn);
-
-      attachSelectPreview(cell, show);
-      cell.addEventListener("click", () => openFieldEditor(idx));
-      grid.appendChild(cell);
-    });
-
-  headerFields.appendChild(grid);
-}
-
-function renderBodyGrid(shows, allShows) {
-  formGrid.innerHTML = "";
-  formGrid.style.placeContent = "";
-  bodyLabel.classList.add("hidden");
-
-  if (!shows.length) {
-    bodyLabel.classList.remove("hidden");
-    formGrid.style.minHeight = `${Math.max(220, appState.dragRowHeight * 2)}px`;
-    formGrid.style.gridTemplateColumns = "minmax(220px, 380px)";
-    formGrid.style.placeContent = "center";
-
-    const emptyAdd = document.createElement("button");
-    emptyAdd.type = "button";
-    emptyAdd.className = "empty-add-card";
-    emptyAdd.innerHTML = '<span class="empty-add-plus">+</span><span class="empty-add-text">Neues Feld anlegen</span>';
-    emptyAdd.addEventListener("click", () => insertFieldAtPosition(1, 1));
-    formGrid.appendChild(emptyAdd);
-    return;
-  }
-
-  bodyLabel.classList.remove("hidden");
-
-  const { containers, memberShowTypes } = getGroupingConfig(shows);
-  const bodyStandaloneShows = shows.filter((s) => {
-    const showType = String(s.showType || "").toUpperCase();
-    const tag = String(s.tag || "").toUpperCase();
-    if (tag === "GROUPING") return false;
-    return !memberShowTypes.has(showType);
-  });
-
-  const sorted = bodyStandaloneShows
-    .slice()
-    .sort((a, b) => (Number(a.vpos) - Number(b.vpos)) || (Number(a.hpos) - Number(b.hpos)));
-
-  const containerItems = containers.map((c) => c.container);
-  const allGridItems = [...sorted, ...containerItems];
-  const outerRenderedItems = [];
-  if (!allGridItems.length) {
-    bodyLabel.classList.remove("hidden");
-    formGrid.style.minHeight = `${Math.max(220, appState.dragRowHeight * 2)}px`;
-    formGrid.style.gridTemplateColumns = "minmax(220px, 380px)";
-    formGrid.style.placeContent = "center";
-
-    const emptyAdd = document.createElement("button");
-    emptyAdd.type = "button";
-    emptyAdd.className = "empty-add-card";
-    emptyAdd.innerHTML = '<span class="empty-add-plus">+</span><span class="empty-add-text">Neues Feld anlegen</span>';
-    emptyAdd.addEventListener("click", () => insertFieldAtPosition(1, 1));
-    formGrid.appendChild(emptyAdd);
-    return;
-  }
-
-  const usedCols = Math.max(...allGridItems.map((s) => (Number(s.hpos) || 1) + (Number(s.colspan) || 1) - 1));
-  const cols = Math.max(usedCols, Number(appState.manualBodyCols || 0), 1);
-  appState.formGridCols = cols;
-  appState.manualBodyCols = cols;
-  formGrid.style.gridTemplateColumns = `repeat(${cols}, 1fr) 28px`;
-
-  const usedRows = Math.max(...allGridItems.map((s) => (Number(s.vpos) || 1) + (Number(s.rowspan) || 1) - 1));
-  const rows = Math.max(usedRows + Number(appState.extraBodyRows || 0), 1);
-  formGrid.style.minHeight = `${rows * appState.dragRowHeight}px`;
-
-  // Background ghost cells — one per grid slot, rendered before cards so cards paint on top
-  for (let r = 1; r <= rows; r++) {
-    for (let c = 1; c <= cols; c++) {
-      const ghost = document.createElement("div");
-      ghost.className = "grid-ghost-cell";
-      ghost.dataset.hpos = String(c);
-      ghost.dataset.vpos = String(r);
-      ghost.style.gridColumn = String(c);
-      ghost.style.gridRow = String(r);
-      const ghostPlus = document.createElement("span");
-      ghostPlus.className = "ghost-cell-add";
-      ghostPlus.textContent = "+";
-      ghost.appendChild(ghostPlus);
-      ghost.addEventListener("click", () => insertFieldAtPosition(c, r));
-      formGrid.appendChild(ghost);
-    }
-  }
-
-  if (!appState.formGridDropBound) {
-    formGrid.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      formGrid.classList.add("drop-target-active");
-
-      const idx = Number(event.dataTransfer.getData("text/plain"));
-      const field = appState.shows[idx];
-      if (!field || String(field.showType || "").toUpperCase() !== "BODY") return;
-
-      const rect = formGrid.getBoundingClientRect();
-      const colWidth = rect.width / Math.max(1, appState.formGridCols);
-      const localH = Math.max(1, Math.floor(Math.max(0, event.clientX - rect.left) / Math.max(1, colWidth)) + 1);
-      const localV = Math.max(1, Math.floor(Math.max(0, event.clientY - rect.top) / appState.dragRowHeight) + 1);
-      showSnapIndicator(formGrid, localH, localV, Number(field.colspan) || 1, Number(field.rowspan) || 1, appState.formGridCols);
-
-      const pool = appState.shows.filter(
-        (s) => String(s.showType || "").toUpperCase() === "BODY" && String(s.tag || "").toUpperCase() !== "GROUPING"
-      );
-      const preview = simulatePushPreview(pool, field, localH, localV, appState.formGridCols);
-      showPushPreview(preview);
-    });
-
-    formGrid.addEventListener("dragleave", () => {
-      formGrid.classList.remove("drop-target-active");
-      hideSnapIndicator();
-      clearPushPreview();
-    });
-
-    formGrid.addEventListener("drop", (event) => {
-      event.preventDefault();
-      formGrid.classList.remove("drop-target-active");
-
-      const idx = Number(event.dataTransfer.getData("text/plain"));
-      if (!Number.isFinite(idx)) return;
-      const field = appState.shows[idx];
-      if (!field) return;
-      if (String(field.showType || "").toUpperCase() !== "BODY") return;
-
-      moveFieldToGridPosition(field, formGrid, event, appState.formGridCols, 1, 1);
-      normalizeFieldPosition(field, appState.formGridCols);
-
-      const pool = appState.shows.filter(
-        (s) => String(s.showType || "").toUpperCase() === "BODY" && String(s.tag || "").toUpperCase() !== "GROUPING"
-      );
-      resolveNoOverlap(pool, field, appState.formGridCols);
-
-      hideSnapIndicator();
-      clearPushPreview();
-      renderProfile(appState.invokeData);
-    });
-
-    appState.formGridDropBound = true;
-  }
-
-  sorted.forEach((show) => {
-    const idx = appState.shows.indexOf(show);
-    const hpos = Math.max(1, Number(show.hpos) || 1);
-    const vpos = Math.max(1, Number(show.vpos) || 1);
-    const colspan = Math.max(1, Number(show.colspan) || 1);
-    const rowspan = Math.max(1, Number(show.rowspan) || 1);
-
-    const card = document.createElement("div");
-    card.className = `field-card is-draggable ${fieldStateClass(show)}`;
-    card.setAttribute("data-field-index", String(idx));
-    card.draggable = true;
-    card.style.gridColumn = `${hpos} / span ${colspan}`;
-    card.style.gridRow = `${vpos} / span ${rowspan}`;
-
-    const flags = [
-      show.mandatory ? '<span class="flag flag-required">required</span>' : "",
-      show.readonly ? '<span class="flag flag-readonly">readonly</span>' : "",
-      show.hidden ? '<span class="flag flag-hidden">hidden</span>' : "",
-    ].join("");
-
-    card.innerHTML = `
-      <div class="field-label">${esc(show.displayName || show.attributeName || "(no label)")}</div>
-      <div class="field-attr">${esc(show.attributeName || "")}</div>
-      <div class="field-footer">
-        ${show.datatype ? `<span class="field-badge">${esc(show.datatype)}</span>` : ""}
-        ${show.tag ? `<span class="field-badge tag-badge">${esc(show.tag)}</span>` : ""}
-        ${flags}
-      </div>
-    `;
-
-    // Edge-insert buttons (top / right / bottom / left)
-    const edgeDirs = [
-      { dir: "top",    title: "Zeile darüber einfügen"   },
-      { dir: "right",  title: "Spalte rechts einfügen"   },
-      { dir: "bottom", title: "Zeile darunter einfügen"  },
-      { dir: "left",   title: "Spalte links einfügen"    },
-    ];
-    edgeDirs.forEach(({ dir, title }) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `edge-insert-btn edge-insert-${dir}`;
-      btn.title = title;
-      btn.setAttribute("aria-label", title);
-      btn.textContent = "+";
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        insertFieldAtEdge(show, dir);
-      });
-      card.appendChild(btn);
-    });
-
-    // Remove button (top-right corner)
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "field-remove-btn";
-    removeBtn.title = "Feld entfernen";
-    removeBtn.setAttribute("aria-label", "Feld entfernen");
-    removeBtn.textContent = "×";
-    removeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      removeFieldFromProfile(show);
-    });
-    card.appendChild(removeBtn);
-
-    attachSelectPreview(card, show);
-    card.addEventListener("dragstart", (event) => beginDragField(event, idx));
-    card.addEventListener("dragend", endDragField);
-    card.addEventListener("click", () => {
-      if (appState.dragging || nowMs() < appState.dragSuppressClickUntil) return;
-      openFieldEditor(idx);
-    });
-    formGrid.appendChild(card);
-    outerRenderedItems.push({
-      rect: { left: hpos, top: vpos, right: hpos + colspan - 1, bottom: vpos + rowspan - 1 },
-      element: card,
-    });
-  });
-
-  containers.forEach(({ container, memberType, defaultOpen }) => {
-    const containerIdx = appState.shows.indexOf(container);
-    const members = allShows
-      .filter((s) => String(s.showType || "").toUpperCase() === memberType)
-      .slice()
-      .sort((a, b) => (Number(a.vpos) - Number(b.vpos)) || (Number(a.hpos) - Number(b.hpos)));
-
-    const hpos = Math.max(1, Number(container.hpos) || 1);
-    const vpos = Math.max(1, Number(container.vpos) || 1);
-    const colspan = Math.max(1, Number(container.colspan) || 1);
-    const rowspan = Math.max(1, Number(container.rowspan) || 1);
-
-    const wrapper = document.createElement("details");
-    wrapper.className = "grouping-card";
-    wrapper.setAttribute("data-field-index", String(containerIdx));
-    wrapper.style.gridColumn = `${hpos} / span ${colspan}`;
-    wrapper.style.gridRow = `${vpos} / span ${rowspan}`;
-    wrapper.open = defaultOpen;
-
-    const titleText = container.displayName || container.attributeName || `Group ${memberType}`;
-    const summary = document.createElement("summary");
-    summary.innerHTML = `
-      <span class="grouping-title">${esc(titleText)}</span>
-      <span class="grouping-meta">${esc(memberType)} · ${members.length} field${members.length !== 1 ? "s" : ""}</span>
-    `;
-    wrapper.appendChild(summary);
-
-    wrapper.addEventListener("click", (event) => {
-      if (!Number.isFinite(containerIdx) || containerIdx < 0) return;
-      if (appState.dragging || nowMs() < appState.dragSuppressClickUntil) return;
-      if (event.target.closest(".grouping-inner-grid")) return;
-      if (event.target.closest(".edge-insert-btn")) return;
-      if (event.target.closest(".field-remove-btn")) return;
-      openFieldEditor(containerIdx);
-    });
-
-    const memberGrid = document.createElement("div");
-    memberGrid.className = "grouping-inner-grid";
-
-    if (!members.length) {
-      memberGrid.innerHTML = `<p class="empty-hint">No fields found for show_type ${esc(memberType)}.</p>`;
-    } else {
-      const minH = Math.min(...members.map((m) => Math.max(1, Number(m.hpos) || 1)));
-      const minV = Math.min(...members.map((m) => Math.max(1, Number(m.vpos) || 1)));
-      const maxMemberCol = Math.max(
-        ...members.map((m) => (Math.max(1, Number(m.hpos) || 1) - minH + 1) + Math.max(1, Number(m.colspan) || 1) - 1)
-      );
-
-      memberGrid.style.gridTemplateColumns = `repeat(${Math.max(1, maxMemberCol)}, minmax(130px, 1fr))`;
-      memberGrid.style.minHeight = `${Math.max(1, Math.max(...members.map((m) => Number(m.vpos) || 1))) * appState.dragRowHeight}px`;
-
-      memberGrid.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        memberGrid.classList.add("drop-target-active");
-
-        const idx = Number(event.dataTransfer.getData("text/plain"));
-        const field = appState.shows[idx];
-        if (!field || String(field.showType || "").toUpperCase() !== memberType) return;
-
-        const rect = memberGrid.getBoundingClientRect();
-        const localH = Math.max(1, Math.floor(Math.max(0, event.clientX - rect.left) / Math.max(1, rect.width / Math.max(1, maxMemberCol))) + 1);
-        const localV = Math.max(1, Math.floor(Math.max(0, event.clientY - rect.top) / appState.dragRowHeight) + 1);
-        showSnapIndicator(memberGrid, localH, localV, Number(field.colspan) || 1, Number(field.rowspan) || 1, Math.max(1, maxMemberCol));
-
-        const pool = appState.shows.filter((s) => String(s.showType || "").toUpperCase() === memberType);
-        const preview = simulatePushPreview(pool, field, minH + localH - 1, minV + localV - 1, Math.max(1, maxMemberCol) + minH - 1);
-        showPushPreview(preview);
-      });
-
-      memberGrid.addEventListener("dragleave", () => {
-        memberGrid.classList.remove("drop-target-active");
-        hideSnapIndicator();
-        clearPushPreview();
-      });
-
-      memberGrid.addEventListener("drop", (event) => {
-        event.preventDefault();
-        memberGrid.classList.remove("drop-target-active");
-
-        const idx = Number(event.dataTransfer.getData("text/plain"));
-        if (!Number.isFinite(idx)) return;
-        const field = appState.shows[idx];
-        if (!field) return;
-        if (String(field.showType || "").toUpperCase() !== memberType) return;
-
-        moveFieldToGridPosition(field, memberGrid, event, Math.max(1, maxMemberCol), minH, minV);
-
-        const groupPool = appState.shows.filter((s) => String(s.showType || "").toUpperCase() === memberType);
-        resolveNoOverlap(groupPool, field, Math.max(1, maxMemberCol) + minH - 1);
-
-        hideSnapIndicator();
-        clearPushPreview();
-        renderProfile(appState.invokeData);
-      });
-
-      members.forEach((member) => {
-        const idx = appState.shows.indexOf(member);
-        const localH = Math.max(1, Number(member.hpos) || 1) - minH + 1;
-        const localV = Math.max(1, Number(member.vpos) || 1) - minV + 1;
-        const localColspan = Math.max(1, Number(member.colspan) || 1);
-        const localRowspan = Math.max(1, Number(member.rowspan) || 1);
-
-        const card = document.createElement("div");
-        card.className = `field-card small is-draggable ${fieldStateClass(member)}`;
-        card.setAttribute("data-field-index", String(idx));
-        card.draggable = true;
-        card.style.gridColumn = `${localH} / span ${localColspan}`;
-        card.style.gridRow = `${localV} / span ${localRowspan}`;
-        card.innerHTML = `
-          <div class="field-label">${esc(member.displayName || member.attributeName || "(no label)")}</div>
-          <div class="field-attr">${esc(member.attributeName || "")}</div>
-          <div class="field-footer">
-            ${member.datatype ? `<span class="field-badge">${esc(member.datatype)}</span>` : ""}
-            ${member.tag ? `<span class="field-badge tag-badge">${esc(member.tag)}</span>` : ""}
-          </div>
-        `;
-
-        // Edge-insert buttons
-        const memberEdgeDirs = [
-          { dir: "top",    title: "Zeile darüber einfügen"  },
-          { dir: "right",  title: "Spalte rechts einfügen"  },
-          { dir: "bottom", title: "Zeile darunter einfügen" },
-          { dir: "left",   title: "Spalte links einfügen"   },
-        ];
-        memberEdgeDirs.forEach(({ dir, title }) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = `edge-insert-btn edge-insert-${dir}`;
-          btn.title = title;
-          btn.setAttribute("aria-label", title);
-          btn.textContent = "+";
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            insertFieldAtEdge(member, dir);
-          });
-          card.appendChild(btn);
-        });
-
-        // Remove button
-        const memberRemoveBtn = document.createElement("button");
-        memberRemoveBtn.type = "button";
-        memberRemoveBtn.className = "field-remove-btn";
-        memberRemoveBtn.title = "Feld entfernen";
-        memberRemoveBtn.setAttribute("aria-label", "Feld entfernen");
-        memberRemoveBtn.textContent = "×";
-        memberRemoveBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          removeFieldFromProfile(member);
-        });
-        card.appendChild(memberRemoveBtn);
-
-        attachSelectPreview(card, member);
-        card.addEventListener("dragstart", (event) => beginDragField(event, idx));
-        card.addEventListener("dragend", endDragField);
-        card.addEventListener("click", (event) => {
-          event.stopPropagation();
-          if (appState.dragging || nowMs() < appState.dragSuppressClickUntil) return;
-          openFieldEditor(idx);
-        });
-
-        memberGrid.appendChild(card);
-      });
-    }
-
-    wrapper.appendChild(memberGrid);
-
-    // Edge-insert buttons on the grouping container (positions in the outer BODY grid)
-    const groupEdgeDirs = [
-      { dir: "top",    title: "Zeile darüber einfügen"  },
-      { dir: "right",  title: "Spalte rechts einfügen"  },
-      { dir: "bottom", title: "Zeile darunter einfügen" },
-      { dir: "left",   title: "Spalte links einfügen"   },
-    ];
-    groupEdgeDirs.forEach(({ dir, title }) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `edge-insert-btn edge-insert-${dir}`;
-      btn.title = title;
-      btn.setAttribute("aria-label", title);
-      btn.textContent = "+";
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        insertFieldAtEdge(container, dir);
-      });
-      wrapper.appendChild(btn);
-    });
-
-    // Remove button for the grouping container
-    const groupRemoveBtn = document.createElement("button");
-    groupRemoveBtn.type = "button";
-    groupRemoveBtn.className = "field-remove-btn";
-    groupRemoveBtn.title = "Gruppierung entfernen";
-    groupRemoveBtn.setAttribute("aria-label", "Gruppierung entfernen");
-    groupRemoveBtn.textContent = "×";
-    groupRemoveBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      removeFieldFromProfile(container);
-    });
-    wrapper.appendChild(groupRemoveBtn);
-
-    formGrid.appendChild(wrapper);
-    outerRenderedItems.push({
-      rect: { left: hpos, top: vpos, right: hpos + colspan - 1, bottom: vpos + rowspan - 1 },
-      element: wrapper,
-    });
-  });
-
-    // "−" buttons on the top edge of visible top-level columns → remove that column and its content
-    const coveredCols = new Set();
-    for (let c = 1; c <= usedCols; c++) {
-      if (coveredCols.has(c)) continue;
-
-      const target = outerRenderedItems
-        .filter((item) => item.rect.left <= c && item.rect.right >= c)
-        .sort((a, b) => (a.rect.top - b.rect.top) || (a.rect.left - b.rect.left))[0];
-
-      if (!target?.element) continue;
-
-      const btn = document.createElement("button");
-      btn.className = "grid-edge-btn grid-remove-btn grid-remove-top";
-      btn.type = "button";
-      btn.title = "Remove column and its content";
-      btn.textContent = "−";
-      btn.style.left = `${target.element.offsetLeft}px`;
-      btn.style.top = `${target.element.offsetTop - 36}px`;
-      btn.style.width = `${target.element.offsetWidth}px`;
-      btn.addEventListener("click", () => removeBodyColumn(c));
-      formGrid.appendChild(btn);
-
-      for (let covered = target.rect.left; covered <= target.rect.right; covered += 1) {
-        coveredCols.add(covered);
-      }
-    }
-
-    // "−" buttons on the left edge of visible top-level rows → remove that row and its content
-    const coveredRows = new Set();
-    for (let r = 1; r <= usedRows; r++) {
-      if (coveredRows.has(r)) continue;
-
-      const target = outerRenderedItems
-        .filter((item) => item.rect.top <= r && item.rect.bottom >= r)
-        .sort((a, b) => (a.rect.left - b.rect.left) || (a.rect.top - b.rect.top))[0];
-
-      if (!target?.element) continue;
-
-      const btn = document.createElement("button");
-      btn.className = "grid-edge-btn grid-remove-btn grid-remove-left";
-      btn.type = "button";
-      btn.title = "Remove row and its content";
-      btn.textContent = "−";
-      btn.style.left = `${target.element.offsetLeft - 36}px`;
-      btn.style.top = `${target.element.offsetTop}px`;
-      btn.style.height = `${target.element.offsetHeight}px`;
-      btn.addEventListener("click", () => removeBodyRow(r));
-      formGrid.appendChild(btn);
-
-      for (let covered = target.rect.top; covered <= target.rect.bottom; covered += 1) {
-        coveredRows.add(covered);
-      }
-    }
-
-    // "+" buttons on the right edge of every row → add a column
-    for (let r = 1; r <= rows; r++) {
-      const btn = document.createElement("button");
-      btn.className = "grid-add-btn grid-add-col";
-      btn.type = "button";
-      btn.title = "Add column";
-      btn.textContent = "+";
-      btn.style.gridColumn = String(cols + 1);
-      btn.style.gridRow = String(r);
-      btn.addEventListener("click", () => {
-        if (!appState.invokeData) return;
-        appState.manualBodyCols = Math.max(1, Number(appState.manualBodyCols || appState.formGridCols || 2)) + 1;
-        renderProfile(appState.invokeData);
-      });
-      formGrid.appendChild(btn);
-    }
-
-    // "+" buttons at the bottom of every column → add a row
-    for (let c = 1; c <= cols; c++) {
-      const btn = document.createElement("button");
-      btn.className = "grid-add-btn grid-add-row";
-      btn.type = "button";
-      btn.title = "Add row";
-      btn.textContent = "+";
-      btn.style.gridColumn = String(c);
-      btn.style.gridRow = String(rows + 1);
-      btn.addEventListener("click", () => {
-        if (!appState.invokeData) return;
-        appState.extraBodyRows += 1;
-        renderProfile(appState.invokeData);
-      });
-      formGrid.appendChild(btn);
-    }
-}
-
-function renderOtherSection(shows) {
-  otherFields.innerHTML = "";
-  if (!shows.length) return;
-
-  const grouped = {};
-  shows.forEach((s) => {
-    const t = String(s.showType || "OTHER").toUpperCase();
-    if (!grouped[t]) grouped[t] = [];
-    grouped[t].push(s);
-  });
-
-  Object.entries(grouped).forEach(([type, items]) => {
-    const label = document.createElement("p");
-    label.className = "section-label";
-    label.textContent = type;
-    otherFields.appendChild(label);
-
-    const grid = document.createElement("div");
-    grid.className = "header-grid";
-
-    items
-      .slice()
-      .sort((a, b) => Number(a.seq) - Number(b.seq))
-      .forEach((show) => {
-        const idx = appState.shows.indexOf(show);
-        const cell = document.createElement("div");
-        cell.className = `field-card small ${fieldStateClass(show)}`;
-        cell.innerHTML = `
-          <div class="field-label">${esc(show.displayName || show.attributeName || "")}</div>
-          <div class="field-attr">${esc(show.attributeName || "")}</div>
-          ${show.datatype ? `<span class="field-badge">${esc(show.datatype)}</span>` : ""}
-        `;
-
-        const edgeDirs = [
-          { dir: "top", title: "Feld davor einfuegen" },
-          { dir: "right", title: "Feld danach einfuegen" },
-          { dir: "bottom", title: "Feld danach einfuegen" },
-          { dir: "left", title: "Feld davor einfuegen" },
-        ];
-        edgeDirs.forEach(({ dir, title }) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = `edge-insert-btn edge-insert-${dir}`;
-          btn.title = title;
-          btn.setAttribute("aria-label", title);
-          btn.textContent = "+";
-          btn.addEventListener("click", (event) => {
-            event.stopPropagation();
-            insertFieldForCard(show, dir);
-          });
-          cell.appendChild(btn);
-        });
-
-        const removeBtn = document.createElement("button");
-        removeBtn.type = "button";
-        removeBtn.className = "field-remove-btn";
-        removeBtn.title = "Feld entfernen";
-        removeBtn.setAttribute("aria-label", "Feld entfernen");
-        removeBtn.textContent = "×";
-        removeBtn.addEventListener("click", (event) => {
-          event.stopPropagation();
-          removeFieldFromProfile(show);
-        });
-        cell.appendChild(removeBtn);
-
-        attachSelectPreview(cell, show);
-        cell.addEventListener("click", () => openFieldEditor(idx));
-        grid.appendChild(cell);
-      });
-
-    otherFields.appendChild(grid);
-  });
-}
-
-function getSortableValue(show, key) {
-  const value = show?.[key];
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number") return value;
-  const asNumber = Number(value);
-  if (!Number.isNaN(asNumber) && value !== "" && value !== null && value !== undefined) return asNumber;
-  return String(value ?? "").toLowerCase();
-}
-
-function renderFieldTable(shows) {
-  fieldTableBody.innerHTML = "";
-
-  const { key, dir } = appState.tableSort;
-  const factor = dir === "desc" ? -1 : 1;
-
-  shows
-    .slice()
-    .sort((a, b) => {
-      const av = getSortableValue(a, key);
-      const bv = getSortableValue(b, key);
-      if (av < bv) return -1 * factor;
-      if (av > bv) return 1 * factor;
-      return (Number(a.seq) - Number(b.seq));
-    })
-    .forEach((show) => {
-      const idx = appState.shows.indexOf(show);
-      const tr = document.createElement("tr");
-      tr.className = "field-row-clickable";
-      tr.innerHTML = [
-        esc(show.seq),
-        `<span class="field-badge type-badge-${esc(String(show.showType || "").toLowerCase())}">${esc(show.showType)}</span>`,
-        esc(show.hpos),
-        esc(show.vpos),
-        esc(show.colspan),
-        esc(show.rowspan),
-        esc(show.displayName),
-        `<code>${esc(show.attributeName)}</code>`,
-        esc(show.tag),
-        esc(show.datatype),
-        show.mandatory ? '<span class="flag flag-required">✓</span>' : "",
-        show.hidden ? '<span class="flag flag-hidden">✓</span>' : "",
-        show.readonly ? '<span class="flag flag-readonly">✓</span>' : "",
-      ].map((c) => `<td>${c}</td>`).join("");
-
-      tr.addEventListener("click", () => openFieldEditor(idx));
-      fieldTableBody.appendChild(tr);
-    });
-}
-
 function renderProfile(invokeData) {
   const shows = extractShows(invokeData);
   const name = extractProfileName(invokeData);
