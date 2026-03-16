@@ -13,7 +13,10 @@ import { parseTagPrefs, serializeTagPrefs } from "/js/tag-prefs.js";
 import { createStorageService, getUrlParamValue } from "/js/storage.js";
 import { createNoticeService } from "/js/notices.js";
 import {
+  appendEdgeInsertButtons,
+  appendRemoveButton,
   escapeHtml as esc,
+  renderFieldCardMarkup,
 } from "/js/field-card-factory.js";
 import {
   buildProfileRefreshInvoker,
@@ -43,6 +46,8 @@ import { createSectionRenderer, fieldStateClass } from "/js/section-renderer.js"
 import {
   getFieldRect,
   getGroupingConfig,
+  normalizeFieldPosition,
+  resolveNoOverlap,
 } from "/js/grid-geometry.js";
 import { createBodyGridRenderer } from "/js/body-grid-renderer.js";
 
@@ -94,7 +99,7 @@ const confirmConditionalValueListBtn = document.getElementById("confirmCondition
 const createNewConditionalValueListBtn = document.getElementById("createNewConditionalValueListBtn");
 const editMandatory = document.getElementById("editMandatory");
 const editReadonly = document.getElementById("editReadonly");
-const editHidden = document.getElementById("editHidden");
+const editHidden = null; // removed from basic tab
 const editPersisted = document.getElementById("editPersisted");
 const editFieldJson = document.getElementById("editFieldJson");
 const saveEditorBtn = document.getElementById("saveEditorBtn");
@@ -236,6 +241,7 @@ const appState = {
   nullProfileStepInvokerTemplate: null,
   nullProfileSourceInvoker: null,
   selectedFieldIndex: -1,
+  selectedFieldType: "",
   dragFieldIndex: -1,
   dragging: false,
   dragSuppressClickUntil: 0,
@@ -575,9 +581,14 @@ async function loadProfileByObjectId(token, baseUrl, objId) {
   return sdapiClient.loadProfileByObjectId(token, baseUrl, objId);
 }
 
+function nowMs() {
+  return Date.now();
+}
+
 function applyTagPreset(tagValue) {
   fillTagDropdown(tagValue);
   editTag.value = tagValue;
+  updatePresetButtonHighlight(tagValue);
   applyLiveBasicEdit();
 }
 
@@ -1154,30 +1165,36 @@ async function openFieldEditor(index) {
   if (!field) return;
 
   appState.selectedFieldIndex = index;
+  appState.selectedFieldType = field.tag || "";
   switchEditorTab("basic");
 
-  fieldEditorMeta.textContent = `${field.showType || "?"} | seq ${field.seq ?? "-"} | tag ${field.tag || "-"}`;
+  fieldEditorMeta.textContent = "";
 
   // Basic tab
   fillAttributeNameDropdown(field.attributeName || "");
   editDisplayName.value = field.displayName || "";
-  editTag.dataset.showAll = "0";
-  fillTagDropdown(field.tag || "");
   editPopupType.value = field.popupType || "";
   editPopupObjId.value = field.popupObjId || "";
   editMandatory.checked = Boolean(field.mandatory);
   editReadonly.checked = Boolean(field.readonly);
-  editHidden.checked = Boolean(field.hidden);
   editPersisted.checked = Boolean(field.persisted);
   appState.conditionalEditor.cachedListObjId = "";
   refreshConditionalTagPrefControls(field);
 
   // Expert tab - dynamically generate all field controls
   generateExpertFormControls(field);
+  
+  // Expert tab - populate tag dropdown
+  editTag.dataset.showAll = "0";
+  fillTagDropdown(field.tag || "");
 
   await initConditionalEditorForField(field);
 
   editFieldJson.value = JSON.stringify(field, null, 2);
+  
+  // Highlight the selected preset button
+  updatePresetButtonHighlight(field.tag || "");
+  
   fieldEditorModal.showModal();
 }
 
@@ -1192,12 +1209,10 @@ async function applyFieldEditorChanges() {
     // Basic tab - update from form inputs
     field.attributeName = editAttributeName.value.trim();
     field.displayName = editDisplayName.value;
-    field.tag = editTag.value.trim();
     field.popupType = editPopupType.value.trim();
     field.popupObjId = editPopupObjId.value ? Number(editPopupObjId.value) : null;
     field.mandatory = editMandatory.checked;
     field.readonly = editReadonly.checked;
-    field.hidden = editHidden.checked;
     field.persisted = editPersisted.checked;
   } else {
     // Expert tab - parse JSON and apply
@@ -1245,12 +1260,10 @@ function applyLiveBasicEdit() {
   if (!field) return;
   field.attributeName = editAttributeName.value.trim();
   field.displayName = editDisplayName.value;
-  field.tag = editTag.value.trim();
   field.popupType = editPopupType.value.trim();
   field.popupObjId = editPopupObjId.value ? Number(editPopupObjId.value) : null;
   field.mandatory = editMandatory.checked;
   field.readonly = editReadonly.checked;
-  field.hidden = editHidden.checked;
   field.persisted = editPersisted.checked;
   refreshConditionalTagPrefControls(field);
   if (appState.invokeData) renderProfile(appState.invokeData);
@@ -1320,6 +1333,24 @@ function applyLiveExpertFormEdit() {
   editFieldJson.value = JSON.stringify(field, null, 2);
   
   if (appState.invokeData) renderProfile(appState.invokeData);
+}
+
+function updatePresetButtonHighlight(tag) {
+  // Remove active state from all preset buttons
+  [presetSelectBtn, presetRichtextBtn, presetRadioBtn].forEach(btn => {
+    if (btn) btn.classList.remove("active");
+  });
+  
+  // Add active state to the selected button based on tag
+  if (tag === "SELECT" && presetSelectBtn) {
+    presetSelectBtn.classList.add("active");
+  } else if (tag === "RICHTEXT" && presetRichtextBtn) {
+    presetRichtextBtn.classList.add("active");
+  } else if (tag === "RADIO" && presetRadioBtn) {
+    presetRadioBtn.classList.add("active");
+  }
+  
+  appState.selectedFieldType = tag;
 }
 
 cancelEditorBtn.addEventListener("click", () => fieldEditorModal.close());
@@ -1572,7 +1603,7 @@ savePopupEntryBtn.addEventListener("click", async () => {
   }
 });
 
-[editAttributeName, editDisplayName, editTag, editPopupType, editPopupObjId, editMandatory, editReadonly, editHidden, editPersisted].forEach((el) => {
+[editAttributeName, editDisplayName, editPopupType, editPopupObjId, editMandatory, editReadonly, editPersisted].forEach((el) => {
   el.addEventListener("input", applyLiveBasicEdit);
   el.addEventListener("change", applyLiveBasicEdit);
 });

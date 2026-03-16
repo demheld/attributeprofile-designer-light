@@ -132,40 +132,28 @@
         </div>
 
         <div class="field-editor-presets">
+          <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #666;">Bitte wählen sie den Feldtyp aus.</p>
           <button type="button" class="tag-preset-btn preset-select" id="presetSelectBtn">Auswahlliste</button>
           <button type="button" class="tag-preset-btn preset-richtext" id="presetRichtextBtn">Textfeld</button>
           <button type="button" class="tag-preset-btn preset-radio" id="presetRadioBtn">Auswahlliste (Radiobuttons)</button>
         </div>
 
         <div id="editorBasicPane" class="editor-pane">
-          <label for="editAttributeName">attributeName</label>
-          <select id="editAttributeName"></select>
-
-          <label for="editDisplayName">displayName</label>
+          <label for="editDisplayName">Feldname</label>
           <input id="editDisplayName" type="text" />
 
-          <label for="editTag">tag</label>
-          <select id="editTag"></select>
-          <button type="button" class="secondary" id="editTagMoreBtn">weitere Tags</button>
+          <label for="editAttributeName">Feld-Daten</label>
+          <select id="editAttributeName"></select>
 
-          <label for="editPopupType">popupType</label>
-          <input id="editPopupType" type="text" />
-
-          <label for="editPopupObjId">popupObjId</label>
-          <input id="editPopupObjId" type="number" />
-
-          <label for="editTagPrefReadonly">tagPref</label>
-          <input id="editTagPrefReadonly" type="text" readonly />
+          <input id="editPopupType" type="hidden" />
+          <input id="editPopupObjId" type="hidden" />
 
           <div class="editor-checks">
             <label class="editor-checkbox">
-              <input id="editMandatory" type="checkbox" /> mandatory
+              <input id="editMandatory" type="checkbox" /> Pflichtfeld
             </label>
             <label class="editor-checkbox">
               <input id="editReadonly" type="checkbox" /> readonly
-            </label>
-            <label class="editor-checkbox">
-              <input id="editHidden" type="checkbox" /> hidden
             </label>
             <label class="editor-checkbox">
               <input id="editPersisted" type="checkbox" /> persisted
@@ -197,6 +185,16 @@
 
         <div id="editorExpertPane" class="editor-pane hidden">
           <p class="expert-hint">All attribute properties. Edit form fields or raw JSON below.</p>
+          
+          <label for="editTag">tag</label>
+          <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <select id="editTag" style="flex: 1;"></select>
+            <button type="button" class="secondary" id="editTagMoreBtn">weitere Tags</button>
+          </div>
+          
+          <label for="editTagPrefReadonly">tagPref</label>
+          <input id="editTagPrefReadonly" type="text" readonly />
+          
           <div id="expertFormControls" class="editor-grid-full"></div>
           <textarea id="editFieldJson" class="editor-json" spellcheck="false"></textarea>
         </div>
