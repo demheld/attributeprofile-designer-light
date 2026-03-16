@@ -69,12 +69,14 @@
             <button class="secondary" id="resetBtn" type="button">← New Query</button>
           </div>
         </div>
-        <p id="sendStatus" class="profile-meta"></p>
+                  <div id="editorBasicPane" class="editor-pane">
+                    <div class="field-editor-presets">
+                      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #666;">Bitte wählen sie den Feldtyp aus.</p>
+                      <button type="button" class="tag-preset-btn preset-select" id="presetSelectBtn">Auswahlliste</button>
+                      <button type="button" class="tag-preset-btn preset-richtext" id="presetRichtextBtn">Textfeld</button>
+                      <button type="button" class="tag-preset-btn preset-radio" id="presetRadioBtn">Auswahlliste (Radiobuttons)</button>
+                    </div>
 
-        <div class="tabs">
-          <button class="tab active" data-tab="layout" type="button">Form Layout</button>
-          <button class="tab" data-tab="table" type="button">Field Table</button>
-          <button class="tab" data-tab="raw" type="button">Raw JSON</button>
         </div>
 
         <!-- Form Layout tab -->
