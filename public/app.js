@@ -87,11 +87,11 @@ const fieldEditorModal = document.getElementById("fieldEditorModal");
 const fieldEditorMeta = document.getElementById("fieldEditorMeta");
 const editAttributeName = document.getElementById("editAttributeName");
 const editDisplayName = document.getElementById("editDisplayName");
-const editTag = document.getElementById("editTag");
-const editTagMoreBtn = document.getElementById("editTagMoreBtn");
+const editTag = null; // tag field now in expert form controls only
+const editTagMoreBtn = null; // removed from basic tab
 const editPopupType = document.getElementById("editPopupType");
 const editPopupObjId = document.getElementById("editPopupObjId");
-const editTagPrefReadonly = document.getElementById("editTagPrefReadonly");
+const editTagPrefReadonly = null; // now in expert form controls only
 const conditionalSetupSection = document.getElementById("conditionalSetupSection");
 const conditionalChoiceSection = document.getElementById("conditionalChoiceSection");
 const conditionalValueListInput = document.getElementById("conditionalValueListInput");
@@ -586,9 +586,24 @@ function nowMs() {
 }
 
 function applyTagPreset(tagValue) {
-  fillTagDropdown(tagValue);
-  editTag.value = tagValue;
+  const fieldIdx = appState.selectedFieldIndex;
+  if (fieldIdx < 0) return;
+  
+  const field = appState.shows[fieldIdx];
+  if (!field) return;
+  
+  field.tag = tagValue;
   updatePresetButtonHighlight(tagValue);
+  
+  // Update expert form tag field if it exists
+  const expertTagField = document.getElementById(`expert_tag`);
+  if (expertTagField) {
+    expertTagField.value = tagValue;
+  }
+  
+  // Sync expert JSON view
+  editFieldJson.value = JSON.stringify(field, null, 2);
+  
   applyLiveBasicEdit();
 }
 
@@ -1138,6 +1153,30 @@ function generateExpertFormControls(field) {
       input.type = 'number';
       input.id = `expert_${key}`;
       input.value = value;
+    } else if (key === 'tag') {
+      // Special handling for tag field - create dropdown with all available values
+      input = document.createElement('select');
+      input.id = `expert_${key}`;
+      
+      const primaryOptions = [
+        { value: "SELECT", label: "SELECT (Dropdownmenue)" },
+        { value: "RADIO", label: "RADIO (Auswahlknoepfe)" },
+      ];
+      const others = (typeof TAG_DROPDOWN_VALUES !== 'undefined' ? TAG_DROPDOWN_VALUES : [])
+        .filter((v) => v !== "SELECT" && v !== "RADIO");
+      const allOptions = [
+        ...primaryOptions,
+        ...others.map((v) => ({ value: v, label: v })),
+      ];
+      
+      allOptions.forEach(({ value: optValue, label: optLabel }) => {
+        const option = document.createElement('option');
+        option.value = optValue;
+        option.textContent = optLabel;
+        input.appendChild(option);
+      });
+      
+      input.value = value || "SELECT";
     } else {
       input = document.createElement('input');
       input.type = 'text';
@@ -1183,10 +1222,6 @@ async function openFieldEditor(index) {
 
   // Expert tab - dynamically generate all field controls
   generateExpertFormControls(field);
-  
-  // Expert tab - populate tag dropdown
-  editTag.dataset.showAll = "0";
-  fillTagDropdown(field.tag || "");
 
   await initConditionalEditorForField(field);
 
@@ -1377,14 +1412,6 @@ if (presetRichtextBtn) {
 if (presetRadioBtn) {
   presetRadioBtn.addEventListener("click", () => {
     applyTagPreset("RADIO");
-  });
-}
-
-if (editTagMoreBtn) {
-  editTagMoreBtn.addEventListener("click", () => {
-    editTag.dataset.showAll = "1";
-    fillTagDropdown(editTag.value || "SELECT");
-    editTag.focus();
   });
 }
 
