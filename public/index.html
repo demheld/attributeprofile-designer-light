@@ -69,15 +69,6 @@
             <button class="secondary" id="resetBtn" type="button">← New Query</button>
           </div>
         </div>
-                  <div id="editorBasicPane" class="editor-pane">
-                    <div class="field-editor-presets">
-                      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #666;">Bitte wählen sie den Feldtyp aus.</p>
-                      <button type="button" class="tag-preset-btn preset-select" id="presetSelectBtn">Auswahlliste</button>
-                      <button type="button" class="tag-preset-btn preset-richtext" id="presetRichtextBtn">Textfeld</button>
-                      <button type="button" class="tag-preset-btn preset-radio" id="presetRadioBtn">Auswahlliste (Radiobuttons)</button>
-                    </div>
-
-        </div>
 
         <!-- Form Layout tab -->
         <div id="tabLayout" class="tab-pane">
@@ -125,22 +116,24 @@
       <form method="dialog" class="field-editor-dialog" id="fieldEditorForm">
         <div class="field-editor-head">
           <h3>Edit Attribute Field</h3>
+          <div class="field-editor-head-actions">
+            <button type="button" class="field-editor-mode-btn" id="openExpertModeBtn" title="Expert Mode" aria-label="Expert Mode">
+              <span class="mode-gear" aria-hidden="true">&#9881;</span>
+              <span>Expert Mode</span>
+            </button>
+            <button type="button" class="secondary hidden" id="openBasicModeBtn">Basic Mode</button>
+          </div>
           <p id="fieldEditorMeta" class="field-editor-meta"></p>
         </div>
 
-        <div class="field-editor-tabs">
-          <button type="button" class="field-editor-tab active" data-editor-tab="basic">Basic</button>
-          <button type="button" class="field-editor-tab" data-editor-tab="expert" id="expertTabBtn">Expert</button>
-        </div>
-
-        <div class="field-editor-presets">
-          <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #666;">Bitte wählen sie den Feldtyp aus.</p>
-          <button type="button" class="tag-preset-btn preset-select" id="presetSelectBtn">Auswahlliste</button>
-          <button type="button" class="tag-preset-btn preset-richtext" id="presetRichtextBtn">Textfeld</button>
-          <button type="button" class="tag-preset-btn preset-radio" id="presetRadioBtn">Auswahlliste (Radiobuttons)</button>
-        </div>
-
         <div id="editorBasicPane" class="editor-pane">
+          <div class="field-editor-presets">
+            <p class="field-editor-presets-help">Bitte wählen sie den Feldtyp aus.</p>
+            <button type="button" class="tag-preset-btn preset-select" id="presetSelectBtn">Auswahlliste</button>
+            <button type="button" class="tag-preset-btn preset-richtext" id="presetRichtextBtn">Textfeld</button>
+            <button type="button" class="tag-preset-btn preset-radio" id="presetRadioBtn">Auswahlliste (Radiobuttons)</button>
+          </div>
+
           <label for="editDisplayName">Feldname</label>
           <input id="editDisplayName" type="text" />
 

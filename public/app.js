@@ -109,6 +109,8 @@ const presetRichtextBtn = document.getElementById("presetRichtextBtn");
 const presetRadioBtn = document.getElementById("presetRadioBtn");
 const editorBasicPane = document.getElementById("editorBasicPane");
 const editorExpertPane = document.getElementById("editorExpertPane");
+const openExpertModeBtn = document.getElementById("openExpertModeBtn");
+const openBasicModeBtn = document.getElementById("openBasicModeBtn");
 const editConditionalField = document.getElementById("editConditionalField");
 const conditionalConfig = document.getElementById("conditionalConfig");
 const conditionalChoiceSelect = document.getElementById("conditionalChoiceSelect");
@@ -138,6 +140,11 @@ const popupEntryValue = document.getElementById("popupEntryValue");
 const popupEntryDescription = document.getElementById("popupEntryDescription");
 const cancelPopupEntryBtn = document.getElementById("cancelPopupEntryBtn");
 const savePopupEntryBtn = document.getElementById("savePopupEntryBtn");
+
+function setElementText(element, value) {
+  if (!element) return;
+  element.textContent = String(value ?? "");
+}
 const quickAddFieldModal = document.getElementById("quickAddFieldModal");
 const quickAddFieldType = document.getElementById("quickAddFieldType");
 const quickAddDisplayName = document.getElementById("quickAddDisplayName");
@@ -1083,18 +1090,24 @@ document.querySelectorAll("th[data-sort-key]").forEach((th) => {
 });
 
 function switchEditorTab(name) {
-  document.querySelectorAll(".field-editor-tab").forEach((t) => {
-    t.classList.toggle("active", t.getAttribute("data-editor-tab") === name);
-  });
   editorBasicPane.classList.toggle("hidden", name !== "basic");
   editorExpertPane.classList.toggle("hidden", name !== "expert");
+
+  if (openExpertModeBtn) {
+    openExpertModeBtn.classList.toggle("hidden", name === "expert");
+  }
+  if (openBasicModeBtn) {
+    openBasicModeBtn.classList.toggle("hidden", name !== "expert");
+  }
 }
 
-document.querySelectorAll(".field-editor-tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    switchEditorTab(tab.getAttribute("data-editor-tab"));
-  });
-});
+if (openExpertModeBtn) {
+  openExpertModeBtn.addEventListener("click", () => switchEditorTab("expert"));
+}
+
+if (openBasicModeBtn) {
+  openBasicModeBtn.addEventListener("click", () => switchEditorTab("basic"));
+}
 
 // -- Reset ----------------------------------------------------------------------
 resetBtn.addEventListener("click", () => {
@@ -1207,7 +1220,7 @@ async function openFieldEditor(index) {
   appState.selectedFieldType = field.tag || "";
   switchEditorTab("basic");
 
-  fieldEditorMeta.textContent = "";
+  if (fieldEditorMeta) fieldEditorMeta.textContent = "";
 
   // Basic tab
   fillAttributeNameDropdown(field.attributeName || "");
@@ -1515,7 +1528,7 @@ if (createNewConditionalValueListBtn) {
     if (!field) return;
     try {
       createNewConditionalValueListBtn.disabled = true;
-      createNewConditionalValueListBtn.textContent = "Erstelle Liste ...";
+      setElementText(createNewConditionalValueListBtn, "Erstelle Liste ...");
       const creation = await createConditionalValueListForField(field);
       setFieldConditionalValueListReference(field, creation.createdObjId);
       refreshConditionalTagPrefControls(field);
@@ -1527,7 +1540,7 @@ if (createNewConditionalValueListBtn) {
       showStatus(`Neue Liste erstellen fehlgeschlagen: ${error.message}`, "error");
     } finally {
       createNewConditionalValueListBtn.disabled = false;
-      createNewConditionalValueListBtn.textContent = "Neue Liste erstellen";
+      setElementText(createNewConditionalValueListBtn, "Neue Liste erstellen");
     }
   });
 }
@@ -1912,11 +1925,11 @@ function resolveDependencyAttributeName(normalizedKey) {
 function updateConditionalChoiceMeta() {
   const state = appState.conditionalEditor;
   if (!state.enabled || !state.selectedKey) {
-    conditionalChoiceMeta.textContent = "";
+    setElementText(conditionalChoiceMeta, "");
     return;
   }
   const deps = state.dependenciesByKey[state.selectedKey] || [];
-  conditionalChoiceMeta.textContent = `${deps.length} dependent field${deps.length === 1 ? "" : "s"} selected`;
+  setElementText(conditionalChoiceMeta, `${deps.length} dependent field${deps.length === 1 ? "" : "s"} selected`);
 }
 
 function renderConditionalChoiceOptions() {
@@ -1958,7 +1971,7 @@ function resetConditionalEditorState() {
     dirtyKeys: new Set(),
   };
   conditionalChoiceSelect.innerHTML = "";
-  conditionalChoiceMeta.textContent = "";
+  setElementText(conditionalChoiceMeta, "");
   conditionalDepsBtn.disabled = true;
 }
 
@@ -1998,7 +2011,7 @@ function renderConditionalWarningReasons(reasons) {
 
 function openConditionalWarningDialog(field, reasons) {
   const label = String(field?.displayName || field?.attributeName || "(ohne Name)");
-  conditionalWarningMeta.textContent = `Feld: ${label}`;
+  setElementText(conditionalWarningMeta, `Feld: ${label}`);
   renderConditionalWarningReasons(reasons);
   conditionalWarningModal.showModal();
 }
@@ -2317,7 +2330,7 @@ async function openValueListCreateDialogForField(fieldIndex) {
   const field = appState.shows[fieldIndex];
   if (!field) return;
 
-  valueListCreateMeta.textContent = `Lade Create-Template aus Ordner ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} ...`;
+  setElementText(valueListCreateMeta, `Lade Create-Template aus Ordner ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} ...`);
 
   const discovery = await discoverCreateValueListInvoker(
     VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID,
@@ -2345,7 +2358,7 @@ async function openValueListCreateDialogForField(fieldIndex) {
   };
 
   const fieldName = String(field.displayName || field.attributeName || "(ohne Name)");
-  valueListCreateMeta.textContent = `Feld: ${fieldName} | Ordner: ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} | Quelle: ${discovery.source}`;
+  setElementText(valueListCreateMeta, `Feld: ${fieldName} | Ordner: ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} | Quelle: ${discovery.source}`);
   renderValueListCreateFields(parametersTemplate);
   valueListCreateModal.showModal();
 }
@@ -2399,7 +2412,7 @@ async function initConditionalEditorForField(field) {
   editConditionalField.disabled = false;
 
   if (!hasConditionalList) {
-    conditionalChoiceMeta.textContent = "No conditionalValueList defined in tagPrefs.";
+    setElementText(conditionalChoiceMeta, "No conditionalValueList defined in tagPrefs.");
     refreshConditionalTagPrefControls(field);
     syncConditionalConfigVisibility();
     return;
@@ -2421,7 +2434,7 @@ async function initConditionalEditorForField(field) {
     appState.conditionalEditor.originalDependenciesByKey = cloneDependenciesMap(dependenciesByKey);
     renderConditionalChoiceOptions();
   } catch (error) {
-    conditionalChoiceMeta.textContent = `Failed to load conditional list: ${error.message}`;
+    setElementText(conditionalChoiceMeta, `Failed to load conditional list: ${error.message}`);
     appState.conditionalEditor.enabled = false;
   }
 
@@ -2445,7 +2458,7 @@ async function openConditionalDepsModal() {
   state.sourceOptions = [];
 
   if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
-  if (conditionalAddChoiceMeta) conditionalAddChoiceMeta.textContent = "";
+  setElementText(conditionalAddChoiceMeta, "");
 
   if (popupObjId && /^\d+$/.test(popupObjId)) {
     try {
@@ -2460,29 +2473,28 @@ async function openConditionalDepsModal() {
         });
       }
       if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = !state.sourceOptions.length;
-      if (conditionalAddChoiceMeta) {
-        conditionalAddChoiceMeta.textContent = state.sourceOptions.length
+      setElementText(
+        conditionalAddChoiceMeta,
+        state.sourceOptions.length
           ? "Wert aus Dropdown waehlen und als neuen Conditional Choice uebernehmen."
-          : "Im Dropdown sind keine Werte verfuegbar.";
-      }
+          : "Im Dropdown sind keine Werte verfuegbar.",
+      );
     } catch (error) {
-      if (conditionalAddChoiceMeta) {
-        conditionalAddChoiceMeta.textContent = `Dropdown-Werte konnten nicht geladen werden: ${error.message}`;
-      }
+      setElementText(conditionalAddChoiceMeta, `Dropdown-Werte konnten nicht geladen werden: ${error.message}`);
       if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
     }
-  } else if (conditionalAddChoiceMeta) {
-    conditionalAddChoiceMeta.textContent = "popupObjId fehlt. Bitte zuerst eine Auswahlliste konfigurieren.";
+  } else {
+    setElementText(conditionalAddChoiceMeta, "popupObjId fehlt. Bitte zuerst eine Auswahlliste konfigurieren.");
   }
 
   if (!selectedKey) {
-    conditionalDepsMeta.textContent = "Select a choice first.";
+    setElementText(conditionalDepsMeta, "Select a choice first.");
     conditionalDepsModal.showModal();
     return;
   }
 
   const selectedItem = state.items.find((item) => item.key === selectedKey);
-  conditionalDepsMeta.textContent = `Choice: ${selectedItem?.objName || selectedKey}`;
+  setElementText(conditionalDepsMeta, `Choice: ${selectedItem?.objName || selectedKey}`);
 
   const selectedDeps = new Set(state.dependenciesByKey[selectedKey] || []);
   const attributeOptions = getProfileAttributeOptions();
@@ -2902,7 +2914,7 @@ function attachSelectPreview(card, show) {
       selectEl: sel,
       addBtnEl: addBtn,
     };
-    popupEntryMeta.textContent = `${show.displayName || show.attributeName || "Feld"} | popupObjId ${show.popupObjId}`;
+    setElementText(popupEntryMeta, `${show.displayName || show.attributeName || "Feld"} | popupObjId ${show.popupObjId}`);
     popupEntryValue.value = "";
     popupEntryDescription.value = "";
     const errEl = document.getElementById("popupEntryError");
@@ -2965,8 +2977,8 @@ function renderProfile(invokeData) {
   const allBodyShows = shows.filter((s) => String(s.showType || "").toUpperCase() === "BODY");
   const { memberShowTypes } = getGroupingConfig(allBodyShows);
 
-  profileName.textContent = name;
-  profileMeta.textContent = `${shows.length} field${shows.length !== 1 ? "s" : ""}`;
+  setElementText(profileName, name);
+  setElementText(profileMeta, `${shows.length} field${shows.length !== 1 ? "s" : ""}`);
 
   const headerShows = visibleShows.filter((s) => String(s.showType || "").toUpperCase() === "HEADER");
   const bodyShows = visibleShows.filter((s) => String(s.showType || "").toUpperCase() === "BODY");
@@ -2979,7 +2991,7 @@ function renderProfile(invokeData) {
   renderBodyGrid(bodyShows, visibleShows);
   renderOtherSection(otherShows);
   renderFieldTable(shows);
-  rawOutput.textContent = JSON.stringify(invokeData, null, 2);
+  setElementText(rawOutput, JSON.stringify(invokeData, null, 2));
 }
 
 sendToServerBtn.addEventListener("click", async () => {
@@ -3013,7 +3025,7 @@ sendToServerBtn.addEventListener("click", async () => {
 
   try {
     sendToServerBtn.disabled = true;
-    sendStatus.textContent = "Refreshing profile session and saving via wsapi/call ...";
+    setElementText(sendStatus, "Refreshing profile session and saving via wsapi/call ...");
 
     await saveProfileViaWsapiRefresh({
       token,
@@ -3023,10 +3035,10 @@ sendToServerBtn.addEventListener("click", async () => {
       currentInvokeData: rawProfile,
     });
 
-    sendStatus.textContent = "Saved via wsapi/call (not via SDAPI AttributeProfile.Edit support).";
+    setElementText(sendStatus, "Saved via wsapi/call (not via SDAPI AttributeProfile.Edit support).");
     showCenterNotice("Attributprofil gespeichert: wsapi/call verwendet (SDAPI Edit-Support noch offen).", "info", 2200);
   } catch (err) {
-    sendStatus.textContent = `Send failed: ${err.message}`;
+    setElementText(sendStatus, `Send failed: ${err.message}`);
   } finally {
     sendToServerBtn.disabled = false;
   }
@@ -3052,9 +3064,9 @@ mainForm.addEventListener("submit", async (e) => {
     const invoker = mainProfile.invoker;
 
     if (!invoker) {
-      rawOutput.textContent = JSON.stringify(menuPayload.data, null, 2);
-      profileName.textContent = "AttributeProfile.Edit() not found";
-      profileMeta.textContent = `Object ${objId} has no AttributeProfile.Edit() action in its menu.`;
+      setElementText(rawOutput, JSON.stringify(menuPayload.data, null, 2));
+      setElementText(profileName, "AttributeProfile.Edit() not found");
+      setElementText(profileMeta, `Object ${objId} has no AttributeProfile.Edit() action in its menu.`);
       headerFields.innerHTML = "";
       bodyLabel.classList.add("hidden");
       formGrid.innerHTML = '<p class="empty-hint">This object does not expose an <strong>AttributeProfile.Edit()</strong> action. Check the Raw JSON tab for the full menu response.</p>';
@@ -3093,9 +3105,12 @@ mainForm.addEventListener("submit", async (e) => {
     showStatus("Step 3 / 3 - Rendering profile...", "info");
 
     appState.stepInvokerTemplate = findStepInvoker(mainProfile.invokePayload.data);
-    sendStatus.textContent = appState.stepInvokerTemplate
-      ? "StepInvoker detected. Ready to send profile back."
-      : "No StepInvoker detected in response.";
+    setElementText(
+      sendStatus,
+      appState.stepInvokerTemplate
+        ? "StepInvoker detected. Ready to send profile back."
+        : "No StepInvoker detected in response.",
+    );
 
     renderProfile(mainProfile.invokePayload.data);
     inputSection.classList.add("hidden");
