@@ -111,6 +111,11 @@ const editorBasicPane = document.getElementById("editorBasicPane");
 const editorExpertPane = document.getElementById("editorExpertPane");
 const openExpertModeBtn = document.getElementById("openExpertModeBtn");
 const openBasicModeBtn = document.getElementById("openBasicModeBtn");
+const editorSelectPreview = document.getElementById("editorSelectPreview");
+const editorPreviewSelect = document.getElementById("editorPreviewSelect");
+const editorPreviewAddBtn = document.getElementById("editorPreviewAddBtn");
+const editorPreviewEditBtn = document.getElementById("editorPreviewEditBtn");
+const editorPreviewDeleteBtn = document.getElementById("editorPreviewDeleteBtn");
 const editConditionalField = document.getElementById("editConditionalField");
 const conditionalConfig = document.getElementById("conditionalConfig");
 const conditionalChoiceSelect = document.getElementById("conditionalChoiceSelect");
@@ -288,6 +293,9 @@ const appState = {
     show: null,
     selectEl: null,
     addBtnEl: null,
+    mode: "create",
+    selectedEntry: null,
+    editContext: null,
   },
 };
 
@@ -592,6 +600,64 @@ function nowMs() {
   return Date.now();
 }
 
+async function refreshEditorSelectPreview(field) {
+  if (!editorSelectPreview || !editorPreviewSelect || !editorPreviewAddBtn) return;
+
+  const tag = String(field?.tag || "").trim().toUpperCase();
+  const popupObjId = String(field?.popupObjId || "").trim();
+  const isChoiceWithPopup = (tag === "SELECT" || tag === "RADIO") && /^\d+$/.test(popupObjId);
+
+  editorSelectPreview.classList.toggle("hidden", !isChoiceWithPopup);
+  if (!isChoiceWithPopup) {
+    editorPreviewSelect.innerHTML = '<option>(no items)</option>';
+    editorPreviewAddBtn.disabled = true;
+    if (editorPreviewEditBtn) editorPreviewEditBtn.disabled = true;
+    if (editorPreviewDeleteBtn) editorPreviewDeleteBtn.disabled = true;
+    return;
+  }
+
+  editorPreviewAddBtn.disabled = false;
+  if (editorPreviewEditBtn) editorPreviewEditBtn.disabled = false;
+  if (editorPreviewDeleteBtn) editorPreviewDeleteBtn.disabled = false;
+  editorPreviewSelect.innerHTML = '<option>⌛ loading...</option>';
+
+  try {
+    const items = await loadValueList(popupObjId);
+    if (!items.length) {
+      editorPreviewSelect.innerHTML = '<option>(no items)</option>';
+      return;
+    }
+
+    editorPreviewSelect.innerHTML = items
+      .map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`)
+      .join("");
+
+    const key = normalizeAttributeKey(field.attributeName);
+    const currentValue = appState.previewValues[key];
+    const defaultValue = String(field.defaultValue ?? "").trim();
+
+    if (currentValue && typeof currentValue === "object" && currentValue.value) {
+      editorPreviewSelect.value = currentValue.value;
+    } else if (typeof currentValue === "string" && currentValue) {
+      editorPreviewSelect.value = currentValue;
+    } else if (defaultValue) {
+      const match = items.find((item) =>
+        String(item.value).trim().toUpperCase() === defaultValue.toUpperCase() ||
+        String(item.label).trim().toUpperCase() === defaultValue.toUpperCase()
+      );
+      if (match) {
+        editorPreviewSelect.value = match.value;
+        appState.previewValues[key] = {
+          value: match.value,
+          label: match.label,
+        };
+      }
+    }
+  } catch {
+    editorPreviewSelect.innerHTML = '<option>(error loading)</option>';
+  }
+}
+
 function applyTagPreset(tagValue) {
   const fieldIdx = appState.selectedFieldIndex;
   if (fieldIdx < 0) return;
@@ -610,6 +676,8 @@ function applyTagPreset(tagValue) {
   
   // Sync expert JSON view
   editFieldJson.value = JSON.stringify(field, null, 2);
+
+  void refreshEditorSelectPreview(field);
   
   applyLiveBasicEdit();
 }
@@ -653,6 +721,80 @@ function resolveShowsArrayTarget(invokeData) {
   return null;
 }
 
+function resolveDatatypeForTag(tag) {
+  const normalizedTag = String(tag || "").trim().toUpperCase();
+  if (normalizedTag === "DATE" || normalizedTag === "DATETIME") return "DATE";
+  if (normalizedTag === "NUMBER") return "NUMBER";
+  return "TEXT";
+}
+
+function makeNewField({
+  seq,
+  showType,
+  hpos,
+  vpos,
+  colspan,
+  rowspan,
+  attributeName,
+  displayName,
+  tag,
+  datatype,
+  descr,
+  mandatory,
+  hidden,
+  readonly,
+  persisted,
+}) {
+  return {
+    t: "AttributeShowDO",
+    attributeName,
+    showType,
+    checker: "NONE",
+    colspan: colspan ?? 1,
+    datatype: datatype ?? "TEXT",
+    defaultValue: null,
+    defaultValueL1: null,
+    defaultValueL2: null,
+    defaultValueL3: null,
+    descr: descr ?? null,
+    displayName,
+    displayNameL1: "",
+    displayNameL2: "",
+    displayNameL3: "",
+    displayNameWidth: 32,
+    format: "",
+    hpos,
+    mandatory: Boolean(mandatory),
+    hidden: Boolean(hidden),
+    readonly: Boolean(readonly),
+    persisted: Boolean(persisted),
+    pageNr: 0,
+    popupDialogprefs: null,
+    popupMandatory: "NO",
+    popupObjId: 0,
+    popupP1: null,
+    popupProfileId: null,
+    popupType: "NONE",
+    reference: null,
+    rowspan: rowspan ?? 1,
+    serverChecker: null,
+    tag,
+    tagPref: null,
+    vpos,
+    valueStmtId: 0,
+    xmlElementName: null,
+    alignment: "LEFT",
+    seq,
+    info: null,
+    infoL1: null,
+    infoL2: null,
+    infoL3: null,
+    systemAttributeName: null,
+    code: null,
+    codeSystem: null,
+  };
+}
+
 async function createAndInsertQuickField() {
   if (!appState.invokeData) {
     showStatus("Profil zuerst laden, bevor ein Feld erstellt wird.", "warning");
@@ -684,7 +826,7 @@ async function createAndInsertQuickField() {
     suffix += 1;
   }
 
-  const nextField = {
+  const nextField = makeNewField({
     seq: maxSeq + 1,
     showType: "BODY",
     hpos: 1,
@@ -694,13 +836,8 @@ async function createAndInsertQuickField() {
     attributeName,
     displayName,
     tag: selectedTag,
-    popupType: "",
-    popupObjId: null,
-    mandatory: false,
-    readonly: false,
-    hidden: false,
-    persisted: false,
-  };
+    datatype: resolveDatatypeForTag(selectedTag),
+  });
 
   showsTarget.push(nextField);
   quickAddFieldModal.close();
@@ -777,7 +914,7 @@ function insertFieldAtEdge(referenceField, direction) {
     suffix += 1;
   }
 
-  const newField = {
+  const newField = makeNewField({
     seq: maxSeq + 1,
     showType: fieldShowType,
     hpos: newHpos,
@@ -787,13 +924,8 @@ function insertFieldAtEdge(referenceField, direction) {
     attributeName,
     displayName,
     tag: "RICHTEXT",
-    popupType: "",
-    popupObjId: null,
-    mandatory: false,
-    readonly: false,
-    hidden: false,
-    persisted: false,
-  };
+    datatype: resolveDatatypeForTag("RICHTEXT"),
+  });
 
   showsTarget.push(newField);
   renderProfile(appState.invokeData);
@@ -829,7 +961,7 @@ function insertFieldBySequence(referenceField, direction) {
     suffix += 1;
   }
 
-  const newField = {
+  const newField = makeNewField({
     seq: insertSeq,
     showType,
     hpos: Math.max(1, Number(referenceField.hpos) || 1),
@@ -839,13 +971,8 @@ function insertFieldBySequence(referenceField, direction) {
     attributeName,
     displayName,
     tag: "RICHTEXT",
-    popupType: "",
-    popupObjId: null,
-    mandatory: false,
-    readonly: false,
-    hidden: false,
-    persisted: false,
-  };
+    datatype: resolveDatatypeForTag("RICHTEXT"),
+  });
 
   showsTarget.push(newField);
   renderProfile(appState.invokeData);
@@ -950,7 +1077,7 @@ function insertFieldAtPosition(hpos, vpos) {
     suffix += 1;
   }
 
-  const newField = {
+  const newField = makeNewField({
     seq: maxSeq + 1,
     showType: "BODY",
     hpos,
@@ -960,13 +1087,13 @@ function insertFieldAtPosition(hpos, vpos) {
     attributeName,
     displayName,
     tag: "RICHTEXT",
-    popupType: "",
-    popupObjId: null,
+    datatype: "TEXT",
+    descr: null,
     mandatory: false,
-    readonly: false,
     hidden: false,
+    readonly: false,
     persisted: false,
-  };
+  });
 
   showsTarget.push(newField);
   renderProfile(appState.invokeData);
@@ -1232,6 +1359,7 @@ async function openFieldEditor(index) {
   editPersisted.checked = Boolean(field.persisted);
   appState.conditionalEditor.cachedListObjId = "";
   refreshConditionalTagPrefControls(field);
+  await refreshEditorSelectPreview(field);
 
   // Expert tab - dynamically generate all field controls
   generateExpertFormControls(field);
@@ -1314,6 +1442,7 @@ function applyLiveBasicEdit() {
   field.readonly = editReadonly.checked;
   field.persisted = editPersisted.checked;
   refreshConditionalTagPrefControls(field);
+  void refreshEditorSelectPreview(field);
   if (appState.invokeData) renderProfile(appState.invokeData);
 }
 
@@ -1481,6 +1610,149 @@ conditionalChoiceSelect.addEventListener("change", () => {
 conditionalDepsBtn.addEventListener("click", () => {
   void openConditionalDepsModal();
 });
+
+if (editorPreviewSelect) {
+  editorPreviewSelect.addEventListener("change", () => {
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field) return;
+    const selectedLabel = editorPreviewSelect.selectedOptions?.[0]?.textContent || "";
+    appState.previewValues[normalizeAttributeKey(field.attributeName)] = {
+      value: editorPreviewSelect.value,
+      label: selectedLabel,
+    };
+    if (appState.invokeData) renderProfile(appState.invokeData);
+  });
+}
+
+if (editorPreviewAddBtn) {
+  editorPreviewAddBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field || !field.popupObjId) {
+      showStatus("Kein gueltiges popupObjId fuer neuen Eintrag gefunden.", "error");
+      return;
+    }
+
+    appState.popupEntryDraft = {
+      show: field,
+      selectEl: editorPreviewSelect,
+      addBtnEl: editorPreviewAddBtn,
+      mode: "create",
+      selectedEntry: null,
+      editContext: null,
+    };
+
+    setElementText(
+      popupEntryMeta,
+      `${field.displayName || field.attributeName || "Feld"} | popupObjId ${field.popupObjId}`
+    );
+    popupEntryValue.value = "";
+    popupEntryDescription.value = "";
+    const errEl = document.getElementById("popupEntryError");
+    if (errEl) {
+      errEl.hidden = true;
+      errEl.textContent = "";
+    }
+    popupEntryModal.showModal();
+    popupEntryValue.focus();
+  });
+}
+
+if (editorPreviewEditBtn) {
+  editorPreviewEditBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field || !field.popupObjId) {
+      showStatus("Kein gueltiges popupObjId fuer Eintrag gefunden.", "error");
+      return;
+    }
+    const selectedOption = editorPreviewSelect.selectedOptions?.[0];
+    const entryObjId = selectedOption?.dataset?.objid;
+    if (!entryObjId) {
+      showStatus("Bitte zuerst einen Eintrag auswaehlen.", "warning");
+      return;
+    }
+    try {
+      editorPreviewEditBtn.disabled = true;
+      const { stepInvoker, attributeValues } = await editValueListEntryViaSdapiFlow(entryObjId);
+      const { currentValue, currentDescription } = readCurrentEntryValueAndDescription(attributeValues);
+      appState.popupEntryDraft = {
+        show: field,
+        selectEl: editorPreviewSelect,
+        addBtnEl: editorPreviewAddBtn,
+        mode: "edit",
+        selectedEntry: { objId: entryObjId, value: editorPreviewSelect.value, label: selectedOption.textContent },
+        editContext: { stepInvoker, attributeValues },
+      };
+      setElementText(popupEntryMeta, `${field.displayName || field.attributeName || "Feld"} | Eintrag bearbeiten`);
+      popupEntryValue.value = currentValue;
+      popupEntryDescription.value = currentDescription;
+      const errEl = document.getElementById("popupEntryError");
+      if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+      popupEntryModal.showModal();
+      popupEntryValue.focus();
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      editorPreviewEditBtn.disabled = false;
+    }
+  });
+}
+
+if (editorPreviewDeleteBtn) {
+  editorPreviewDeleteBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field || !field.popupObjId) {
+      showStatus("Kein gueltiges popupObjId fuer Eintrag gefunden.", "error");
+      return;
+    }
+    const selectedOption = editorPreviewSelect.selectedOptions?.[0];
+    const entryObjId = selectedOption?.dataset?.objid;
+    const entryLabel = selectedOption?.textContent || editorPreviewSelect.value || "";
+    if (!entryObjId) {
+      showStatus("Bitte zuerst einen Eintrag auswaehlen.", "warning");
+      return;
+    }
+    if (!confirm(`Eintrag "${entryLabel}" wirklich loeschen?`)) return;
+    try {
+      editorPreviewDeleteBtn.disabled = true;
+      await deleteValueListEntryViaSdapiFlow(entryObjId);
+      const items = await sdapiClient.loadValueListNoCache(field.popupObjId);
+      clearObjListLookupCache(field.popupObjId);
+      if (!items.length) {
+        editorPreviewSelect.innerHTML = '<option>(no items)</option>';
+      } else {
+        editorPreviewSelect.innerHTML = items
+          .map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`)
+          .join("");
+      }
+      const firstItem = items[0];
+      if (firstItem) {
+        editorPreviewSelect.value = firstItem.value;
+        appState.previewValues[normalizeAttributeKey(field.attributeName)] = {
+          value: firstItem.value,
+          label: firstItem.label,
+        };
+      } else {
+        delete appState.previewValues[normalizeAttributeKey(field.attributeName)];
+      }
+      showStatus(`Eintrag '${entryLabel}' wurde geloescht.`, "info");
+      showCenterNotice(`Eintrag '${entryLabel}' wurde geloescht.`, "info", 1800);
+      if (appState.invokeData) renderProfile(appState.invokeData);
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      editorPreviewDeleteBtn.disabled = false;
+    }
+  });
+}
+
 cancelConditionalDepsBtn.addEventListener("click", () => conditionalDepsModal.close());
 saveConditionalDepsBtn.addEventListener("click", applyConditionalDepsSelection);
 if (conditionalAddChoiceBtn) {
@@ -1560,7 +1832,7 @@ saveValueListCreateBtn.addEventListener("click", async () => {
 
 cancelPopupEntryBtn.addEventListener("click", () => {
   popupEntryModal.close();
-  appState.popupEntryDraft = { show: null, selectEl: null, addBtnEl: null };
+  appState.popupEntryDraft = { show: null, selectEl: null, addBtnEl: null, mode: "create", selectedEntry: null, editContext: null };
 });
 
 savePopupEntryBtn.addEventListener("click", async () => {
@@ -1586,56 +1858,89 @@ savePopupEntryBtn.addEventListener("click", async () => {
     savePopupEntryBtn.disabled = true;
     if (addBtn) addBtn.disabled = true;
 
-    const createPayload = await createPopupEntryViaSdapiFlow(show.popupObjId, value, description);
-
-    const items = await sdapiClient.loadValueListNoCache(show.popupObjId);
-    clearObjListLookupCache(show.popupObjId);
-
-    if (sel) {
-      if (!items.length) {
-        sel.innerHTML = '<option>(no items)</option>';
-      } else {
-        sel.innerHTML = items
-          .map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`)
-          .join("");
+    if (draft.mode === "edit") {
+      // -- Edit existing entry --
+      const { stepInvoker, attributeValues } = draft.editContext;
+      const baseParameters = attributeValues && typeof attributeValues === "object"
+        ? attributeValues
+        : (stepInvoker.parameters || {});
+      const { parameters } = fillCreateEntryStepParameters(baseParameters, value, description);
+      await sdapiClient.submitStep(
+        { ...stepInvoker, parameters },
+        "/{objId}/{activityId}/{parentId}/step"
+      );
+      const items = await sdapiClient.loadValueListNoCache(show.popupObjId);
+      clearObjListLookupCache(show.popupObjId);
+      if (sel) {
+        sel.innerHTML = items.length
+          ? items.map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`).join("")
+          : '<option>(no items)</option>';
+        if (draft.selectedEntry) sel.value = draft.selectedEntry.value;
       }
-    }
+      const selectedLabel = sel?.selectedOptions?.[0]?.textContent || description || value;
+      appState.previewValues[normalizeAttributeKey(show.attributeName)] = {
+        value: sel?.value || value,
+        label: selectedLabel,
+      };
+      popupEntryModal.close();
+      appState.popupEntryDraft = { show: null, selectEl: null, addBtnEl: null, mode: "create", selectedEntry: null, editContext: null };
+      const successMessage = `Eintrag '${value}' wurde aktualisiert.`;
+      showStatus(successMessage, "info");
+      showCenterNotice(successMessage, "info", 2000);
+      if (appState.invokeData) renderProfile(appState.invokeData);
+    } else {
+      // -- Create new entry --
+      const createPayload = await createPopupEntryViaSdapiFlow(show.popupObjId, value, description);
 
-    const newObjId = String(createPayload?.newObjId || "").trim();
-    if (sel) {
-      if (newObjId) {
-        sel.value = newObjId;
-      } else {
-        const match = items.find((item) => String(item.label || "").trim().toUpperCase() === value.toUpperCase());
-        if (match) sel.value = match.value;
+      const items = await sdapiClient.loadValueListNoCache(show.popupObjId);
+      clearObjListLookupCache(show.popupObjId);
+
+      if (sel) {
+        if (!items.length) {
+          sel.innerHTML = '<option>(no items)</option>';
+        } else {
+          sel.innerHTML = items
+            .map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`)
+            .join("");
+        }
       }
+
+      const newObjId = String(createPayload?.newObjId || "").trim();
+      if (sel) {
+        if (newObjId) {
+          sel.value = newObjId;
+        } else {
+          const match = items.find((item) => String(item.label || "").trim().toUpperCase() === value.toUpperCase());
+          if (match) sel.value = match.value;
+        }
+      }
+
+      const selectedLabel = sel?.selectedOptions?.[0]?.textContent || description || value;
+      appState.previewValues[normalizeAttributeKey(show.attributeName)] = {
+        value: sel?.value || newObjId || value,
+        label: selectedLabel,
+      };
+
+      popupEntryModal.close();
+      appState.popupEntryDraft = { show: null, selectEl: null, addBtnEl: null, mode: "create", selectedEntry: null, editContext: null };
+      const bulkInfo = Array.isArray(createPayload?.stepResponse?.data?.bulk)
+        ? createPayload.stepResponse.data.bulk.find((entry) => String(entry?.t || "").toUpperCase() === "STATUSMESSAGE2")
+        : null;
+      const infoText = String(bulkInfo?.message || "").trim();
+      const newObjIdInfo = String(createPayload?.newObjId || "").trim();
+      const details = [infoText, newObjIdInfo ? `newObjId=${newObjIdInfo}` : ""].filter(Boolean).join(" | ");
+      const successMessage = details ? `Eintrag '${value}' wurde erstellt. ${details}` : `Eintrag '${value}' wurde erstellt.`;
+      showStatus(successMessage, "info");
+      showCenterNotice(successMessage, "info", 2000);
+      if (appState.invokeData) renderProfile(appState.invokeData);
     }
-
-    const selectedLabel = sel?.selectedOptions?.[0]?.textContent || description || value;
-    appState.previewValues[normalizeAttributeKey(show.attributeName)] = {
-      value: sel?.value || newObjId || value,
-      label: selectedLabel,
-    };
-
-    popupEntryModal.close();
-    appState.popupEntryDraft = { show: null, selectEl: null, addBtnEl: null };
-    const bulkInfo = Array.isArray(createPayload?.stepResponse?.data?.bulk)
-      ? createPayload.stepResponse.data.bulk.find((entry) => String(entry?.t || "").toUpperCase() === "STATUSMESSAGE2")
-      : null;
-    const infoText = String(bulkInfo?.message || "").trim();
-    const newObjIdInfo = String(createPayload?.newObjId || "").trim();
-    const details = [infoText, newObjIdInfo ? `newObjId=${newObjIdInfo}` : ""].filter(Boolean).join(" | ");
-    const successMessage = details ? `Eintrag '${value}' wurde erstellt. ${details}` : `Eintrag '${value}' wurde erstellt.`;
-    showStatus(successMessage, "info");
-    showCenterNotice(successMessage, "info", 2000);
-    if (appState.invokeData) renderProfile(appState.invokeData);
   } catch (error) {
     const errEl = document.getElementById("popupEntryError");
     if (errEl) {
       errEl.textContent = error.message;
       errEl.hidden = false;
     } else {
-      showStatus(`Eintrag konnte nicht erstellt werden: ${error.message}`, "error");
+      showStatus(`Eintrag konnte nicht gespeichert werden: ${error.message}`, "error");
     }
   } finally {
     savePopupEntryBtn.disabled = false;
@@ -2236,6 +2541,67 @@ async function createPopupEntryViaSdapiFlow(popupObjId, value, description) {
   };
 }
 
+function readCurrentEntryValueAndDescription(attributeValues) {
+  const valuePatterns = [/bezeichnung/i, /anzeigewert/i, /obj_name/i, /(^|\.)name(\[|$)/i, /(^|\.)value(\[|$)/i];
+  const descPatterns = [/beschreibung/i, /description/i, /descr/i];
+  const readEntry = (entry) =>
+    String(entry?.displayValue || entry?.internalValue || entry?.valueL0 || entry?.value || "").trim();
+  const entries = Object.entries(attributeValues || {});
+  let currentValue = "";
+  for (const [key, entry] of entries) {
+    if (valuePatterns.some((p) => p.test(key))) {
+      currentValue = readEntry(entry);
+      if (currentValue) break;
+    }
+  }
+  let currentDescription = "";
+  for (const [key, entry] of entries) {
+    if (descPatterns.some((p) => p.test(key))) {
+      currentDescription = readEntry(entry);
+      if (currentDescription) break;
+    }
+  }
+  return { currentValue, currentDescription };
+}
+
+async function editValueListEntryViaSdapiFlow(entryObjId) {
+  const menuPayload = await sdapiClient.fetchMenuForObject(entryObjId);
+  const attrEditInvoker = findInvokerByMethods(menuPayload.data, [
+    "Object.Attributes.Edit()",
+    "Object.Attribute.Edit()",
+  ]);
+  if (!attrEditInvoker) {
+    throw new Error(
+      "Keine M\u00f6glichkeit den Listeneintrag anzupassen. Methode Attributes.Edit() nicht vorhanden. Wenden Sie sich an den Support."
+    );
+  }
+  const invokePayload = await sdapiClient.invokeInvoker(attrEditInvoker);
+  const stepInvoker = findStepInvoker(invokePayload.data);
+  if (!stepInvoker || typeof stepInvoker !== "object") {
+    throw new Error("StepInvoker fehlt in der Edit-Antwort.");
+  }
+  const attributeValues = findAttributeValues(invokePayload.data);
+  return { stepInvoker, attributeValues };
+}
+
+async function deleteValueListEntryViaSdapiFlow(entryObjId) {
+  const menuPayload = await sdapiClient.fetchMenuForObject(entryObjId);
+  const deleteInvoker = findInvokerByPredicate(
+    menuPayload.data,
+    (node) => normalizeMethodName(node?.methodName) === normalizeMethodName("Object.Delete()")
+  );
+  if (!deleteInvoker) {
+    throw new Error(
+      "Eintrag kann nicht gel\u00f6scht werden. Methode Object.Delete() nicht vorhanden. Wenden Sie sich an den Support."
+    );
+  }
+  const invokePayload = await sdapiClient.invokeInvoker(deleteInvoker);
+  const stepInvoker = findStepInvoker(invokePayload.data);
+  if (stepInvoker && typeof stepInvoker === "object") {
+    await sdapiClient.submitStep(stepInvoker, "/{objId}/{activityId}/{parentId}/step");
+  }
+}
+
 function findObjectIdCandidates(data) {
   const ids = new Set();
 
@@ -2727,6 +3093,7 @@ function extractValueListItems(data) {
         results.push({
           label,
           value: String(item.internalValue ?? item.objId ?? label),
+          objId: String(item.objId ?? ""),
         });
       });
       return;
@@ -2740,6 +3107,7 @@ function extractValueListItems(data) {
         results.push({
           label,
           value: String(node.internalValue ?? node.objId ?? label),
+          objId: String(node.objId ?? ""),
         });
       }
       return;
@@ -2913,6 +3281,9 @@ function attachSelectPreview(card, show) {
       show,
       selectEl: sel,
       addBtnEl: addBtn,
+      mode: "create",
+      selectedEntry: null,
+      editContext: null,
     };
     setElementText(popupEntryMeta, `${show.displayName || show.attributeName || "Feld"} | popupObjId ${show.popupObjId}`);
     popupEntryValue.value = "";
@@ -2923,8 +3294,110 @@ function attachSelectPreview(card, show) {
     popupEntryValue.focus();
   });
 
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "field-preview-edit-btn";
+  editBtn.title = "Eintrag bearbeiten";
+  editBtn.setAttribute("aria-label", "Eintrag bearbeiten");
+  editBtn.innerHTML = "&#9998;";
+
+  ["pointerdown", "mousedown", "click", "dblclick", "dragstart"].forEach((eventName) => {
+    editBtn.addEventListener(eventName, (event) => { event.stopPropagation(); });
+  });
+
+  editBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const selectedOption = sel.selectedOptions?.[0];
+    const entryObjId = selectedOption?.dataset?.objid;
+    if (!entryObjId) {
+      showStatus("Bitte zuerst einen Eintrag auswaehlen.", "warning");
+      return;
+    }
+    try {
+      editBtn.disabled = true;
+      const { stepInvoker, attributeValues } = await editValueListEntryViaSdapiFlow(entryObjId);
+      const { currentValue, currentDescription } = readCurrentEntryValueAndDescription(attributeValues);
+      appState.popupEntryDraft = {
+        show,
+        selectEl: sel,
+        addBtnEl: addBtn,
+        mode: "edit",
+        selectedEntry: { objId: entryObjId, value: sel.value, label: selectedOption.textContent },
+        editContext: { stepInvoker, attributeValues },
+      };
+      setElementText(popupEntryMeta, `${show.displayName || show.attributeName || "Feld"} | Eintrag bearbeiten`);
+      popupEntryValue.value = currentValue;
+      popupEntryDescription.value = currentDescription;
+      const errEl = document.getElementById("popupEntryError");
+      if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+      popupEntryModal.showModal();
+      popupEntryValue.focus();
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      editBtn.disabled = false;
+    }
+  });
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "field-preview-delete-btn";
+  deleteBtn.title = "Eintrag loeschen";
+  deleteBtn.setAttribute("aria-label", "Eintrag loeschen");
+  deleteBtn.innerHTML = "&times;";
+
+  ["pointerdown", "mousedown", "click", "dblclick", "dragstart"].forEach((eventName) => {
+    deleteBtn.addEventListener(eventName, (event) => { event.stopPropagation(); });
+  });
+
+  deleteBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const selectedOption = sel.selectedOptions?.[0];
+    const entryObjId = selectedOption?.dataset?.objid;
+    const entryLabel = selectedOption?.textContent || sel.value || "";
+    if (!entryObjId) {
+      showStatus("Bitte zuerst einen Eintrag auswaehlen.", "warning");
+      return;
+    }
+    if (!confirm(`Eintrag "${entryLabel}" wirklich loeschen?`)) return;
+    try {
+      deleteBtn.disabled = true;
+      await deleteValueListEntryViaSdapiFlow(entryObjId);
+      const items = await sdapiClient.loadValueListNoCache(show.popupObjId);
+      clearObjListLookupCache(show.popupObjId);
+      if (!items.length) {
+        sel.innerHTML = '<option>(no items)</option>';
+      } else {
+        sel.innerHTML = items
+          .map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`)
+          .join("");
+      }
+      const firstItem = items[0];
+      if (firstItem) {
+        sel.value = firstItem.value;
+        appState.previewValues[normalizeAttributeKey(show.attributeName)] = {
+          value: firstItem.value,
+          label: firstItem.label,
+        };
+      } else {
+        delete appState.previewValues[normalizeAttributeKey(show.attributeName)];
+      }
+      showStatus(`Eintrag '${entryLabel}' wurde geloescht.`, "info");
+      showCenterNotice(`Eintrag '${entryLabel}' wurde geloescht.`, "info", 1800);
+      if (appState.invokeData) renderProfile(appState.invokeData);
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      deleteBtn.disabled = false;
+    }
+  });
+
   row.appendChild(sel);
   row.appendChild(addBtn);
+  row.appendChild(editBtn);
+  row.appendChild(deleteBtn);
   wrapper.appendChild(row);
   card.appendChild(wrapper);
 
@@ -2935,7 +3408,7 @@ function attachSelectPreview(card, show) {
         return;
       }
       sel.innerHTML = items
-        .map((item) => `<option value="${esc(item.value)}">${esc(item.label)}</option>`)
+        .map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`)
         .join("");
 
       const currentValue = appState.previewValues[normalizeAttributeKey(show.attributeName)];

@@ -70,6 +70,13 @@
           </div>
         </div>
 
+        <!-- Main view tabs -->
+        <div class="tabs">
+          <button type="button" class="tab active" data-tab="layout">Form Layout</button>
+          <button type="button" class="tab" data-tab="table">Field Table</button>
+          <button type="button" class="tab" data-tab="raw">Raw JSON</button>
+        </div>
+
         <!-- Form Layout tab -->
         <div id="tabLayout" class="tab-pane">
           <div id="headerFields"></div>
@@ -156,6 +163,18 @@
             <label class="editor-checkbox">
               <input id="editConditionalField" type="checkbox" /> Bedingtes Feld
             </label>
+          </div>
+
+          <div id="editorSelectPreview" class="field-select-preview hidden">
+            <label for="editorPreviewSelect">Werteliste Vorschau</label>
+            <div class="field-select-preview-row">
+              <select id="editorPreviewSelect" class="field-preview-select">
+                <option>(no items)</option>
+              </select>
+              <button type="button" class="field-preview-add-btn" id="editorPreviewAddBtn" title="Wertelisten-Eintrag hinzufuegen" aria-label="Wertelisten-Eintrag hinzufuegen">+</button>
+              <button type="button" class="field-preview-edit-btn" id="editorPreviewEditBtn" title="Eintrag bearbeiten" aria-label="Eintrag bearbeiten">&#9998;</button>
+              <button type="button" class="field-preview-delete-btn" id="editorPreviewDeleteBtn" title="Eintrag loeschen" aria-label="Eintrag loeschen">&times;</button>
+            </div>
           </div>
 
           <div id="conditionalConfig" class="conditional-config hidden">

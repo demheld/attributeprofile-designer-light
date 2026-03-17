@@ -644,14 +644,15 @@ h2 {
 }
 
 .field-select-preview-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px;
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
   align-items: center;
 }
 
 .field-preview-select {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
   font-size: 0.72rem;
   padding: 0.18rem 0.3rem;
   border: 1px solid var(--border);
@@ -659,7 +660,6 @@ h2 {
   background: #f8fafc;
   color: #334155;
   cursor: pointer;
-  max-width: 100%;
 }
 
 .field-preview-add-btn {
@@ -679,6 +679,43 @@ h2 {
 
 .field-preview-add-btn:hover {
   background: #dbeafe;
+}
+
+.field-preview-edit-btn {
+  border: 1px solid #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+  border-radius: 6px;
+  min-width: 28px;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.field-preview-edit-btn:hover {
+  background: #ccfbf1;
+}
+
+.field-preview-delete-btn {
+  border: 1px solid #fca5a5;
+  background: #fff1f2;
+  color: #dc2626;
+  border-radius: 6px;
+  min-width: 28px;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  line-height: 1;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.field-preview-delete-btn:hover {
+  background: #fee2e2;
 }
 
 .popup-entry-error {
