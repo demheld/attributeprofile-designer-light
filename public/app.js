@@ -600,6 +600,21 @@ function nowMs() {
   return Date.now();
 }
 
+function selectOptionByObjId(selectEl, objId) {
+  if (!selectEl || objId === undefined || objId === null) return false;
+  const wanted = String(objId).trim();
+  if (!wanted) return false;
+
+  const options = selectEl.querySelectorAll("option");
+  for (const option of options) {
+    if (String(option?.dataset?.objid || "").trim() === wanted) {
+      selectEl.value = option.value;
+      return true;
+    }
+  }
+  return false;
+}
+
 async function refreshEditorSelectPreview(field) {
   if (!editorSelectPreview || !editorPreviewSelect || !editorPreviewAddBtn) return;
 
@@ -1875,7 +1890,11 @@ savePopupEntryBtn.addEventListener("click", async () => {
         sel.innerHTML = items.length
           ? items.map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`).join("")
           : '<option>(no items)</option>';
-        if (draft.selectedEntry) sel.value = draft.selectedEntry.value;
+        if (draft.selectedEntry?.objId) {
+          selectOptionByObjId(sel, draft.selectedEntry.objId);
+        } else if (draft.selectedEntry) {
+          sel.value = draft.selectedEntry.value;
+        }
       }
       const selectedLabel = sel?.selectedOptions?.[0]?.textContent || description || value;
       appState.previewValues[normalizeAttributeKey(show.attributeName)] = {
@@ -1908,7 +1927,10 @@ savePopupEntryBtn.addEventListener("click", async () => {
       const newObjId = String(createPayload?.newObjId || "").trim();
       if (sel) {
         if (newObjId) {
-          sel.value = newObjId;
+          if (!selectOptionByObjId(sel, newObjId)) {
+            const match = items.find((item) => String(item.label || "").trim().toUpperCase() === value.toUpperCase());
+            if (match) sel.value = match.value;
+          }
         } else {
           const match = items.find((item) => String(item.label || "").trim().toUpperCase() === value.toUpperCase());
           if (match) sel.value = match.value;
