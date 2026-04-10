@@ -1086,6 +1086,13 @@ h2 {
   padding: 0.45rem 0.6rem;
 }
 
+.conditional-deps-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.3rem 0 0.5rem;
+  line-height: 1.45;
+}
+
 .conditional-deps-list {
   max-height: 46vh;
   overflow-y: auto;
@@ -1109,6 +1116,39 @@ h2 {
 
 .warning-list p {
   margin: 0;
+}
+
+/* ── Settings tab ─────────────────────────────────────────────────────────── */
+.settings-section {
+  margin-bottom: 1.5rem;
+}
+
+.settings-section label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.4rem;
+}
+
+.settings-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.settings-input-row input {
+  flex: 1;
+  max-width: 300px;
+}
+
+.settings-invoker-row {
+  margin-top: 0.5rem;
+}
+
+.settings-invoker-row select {
+  width: 100%;
+  max-width: 460px;
 }
 
 .value-list-create-field {

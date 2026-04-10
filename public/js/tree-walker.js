@@ -104,3 +104,16 @@ export function findInvokersByMethodsAll(data, candidates) {
 
   return found;
 }
+
+export function findAllInvokers(data) {
+  const found = [];
+
+  walkTree(data, (node) => {
+    if (Array.isArray(node)) return;
+    if (node.t === "Invoker" && node.methodName) {
+      found.push(node);
+    }
+  });
+
+  return found;
+}

@@ -65,8 +65,8 @@
           </div>
           <div class="header-actions">
             <button class="secondary" id="datenkontextBtn" type="button">Datenkontext</button>
-            <button id="sendToServerBtn" type="button">Send to Server</button>
             <button class="secondary" id="resetBtn" type="button">← New Query</button>
+            <button id="sendToServerBtn" type="button">Save</button>
           </div>
         </div>
 
@@ -75,6 +75,7 @@
           <button type="button" class="tab active" data-tab="layout">Form Layout</button>
           <button type="button" class="tab" data-tab="table">Field Table</button>
           <button type="button" class="tab" data-tab="raw">Raw JSON</button>
+          <button type="button" class="tab" data-tab="settings">Einstellungen</button>
         </div>
 
         <!-- Form Layout tab -->
@@ -115,6 +116,35 @@
         <div id="tabRaw" class="tab-pane hidden">
           <pre id="rawOutput"></pre>
         </div>
+
+        <!-- Settings tab -->
+        <div id="tabSettings" class="tab-pane hidden">
+          <div class="settings-section">
+            <label for="settingsValueListObjId">Auf welchem Objekt oder in welchem Ordner wird die Liste für Dropdowns abgespeichert?</label>
+            <div class="settings-input-row">
+              <input id="settingsValueListObjId" type="text" placeholder="z.B. 31026762484" />
+              <button type="button" id="settingsValueListLoadBtn">Laden</button>
+            </div>
+            <p id="settingsValueListStatus" class="profile-meta"></p>
+            <div id="settingsValueListInvokerRow" class="settings-invoker-row hidden">
+              <label for="settingsValueListInvokerSelect">Invoker für Erstellung</label>
+              <select id="settingsValueListInvokerSelect"></select>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <label for="settingsConditionalListObjId">Auf welchem Objekt oder in welchem Ordner wird die Liste für bedingte Felder abgespeichert?</label>
+            <div class="settings-input-row">
+              <input id="settingsConditionalListObjId" type="text" placeholder="z.B. 31026762484" />
+              <button type="button" id="settingsConditionalListLoadBtn">Laden</button>
+            </div>
+            <p id="settingsConditionalListStatus" class="profile-meta"></p>
+            <div id="settingsConditionalListInvokerRow" class="settings-invoker-row hidden">
+              <label for="settingsConditionalListInvokerSelect">Invoker für Erstellung</label>
+              <select id="settingsConditionalListInvokerSelect"></select>
+            </div>
+          </div>
+        </div>
       </section>
 
     </div>
@@ -145,7 +175,7 @@
           <input id="editDisplayName" type="text" />
 
           <label for="editAttributeName">Feld-Daten</label>
-          <select id="editAttributeName"></select>
+          <div id="editAttributeNameWrap"></div>
 
           <input id="editPopupType" type="hidden" />
           <input id="editPopupObjId" type="hidden" />
@@ -216,12 +246,9 @@
           <h3>Abhaengige Felder</h3>
           <p id="conditionalDepsMeta" class="field-editor-meta"></p>
         </div>
-        <label for="conditionalNewChoiceSelect">Neuer Choice Eintrag (aus Dropdown)</label>
-        <div class="conditional-choice-row">
-          <select id="conditionalNewChoiceSelect"></select>
-          <button type="button" class="secondary" id="conditionalAddChoiceBtn">Uebernehmen</button>
-        </div>
-        <p id="conditionalAddChoiceMeta" class="profile-meta"></p>
+        <label for="conditionalNewChoiceSelect">Auswahl</label>
+        <select id="conditionalNewChoiceSelect"></select>
+        <p class="conditional-deps-hint">Für die oben getätigte Auswahl, werden die unten ausgewählten Felder als bedingte Felder angezeigt. Will heissen sie werden nicht angezeigt, wenn in der Auswahlliste etwas anderes ausgewählt wird.</p>
         <div id="conditionalDepsList" class="conditional-deps-list"></div>
         <div class="field-editor-actions">
           <button type="button" class="secondary" id="cancelConditionalDepsBtn">Cancel</button>

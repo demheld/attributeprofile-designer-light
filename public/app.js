@@ -1,6 +1,7 @@
 import { createSdapiClient } from "/js/sdapi-client.js";
 import {
   findAttributeValues,
+  findAllInvokers,
   findCreateValueListInvoker,
   findInvoker,
   findInvokerByMethods,
@@ -85,7 +86,8 @@ const { saveFormToStorage, restoreFormFromStorage } = createStorageService({
 
 const fieldEditorModal = document.getElementById("fieldEditorModal");
 const fieldEditorMeta = document.getElementById("fieldEditorMeta");
-const editAttributeName = document.getElementById("editAttributeName");
+const editAttributeNameWrap = document.getElementById("editAttributeNameWrap");
+let editAttributeName = null;
 const editDisplayName = document.getElementById("editDisplayName");
 const editTag = null; // tag field now in expert form controls only
 const editTagMoreBtn = null; // removed from basic tab
@@ -125,8 +127,6 @@ const conditionalDepsModal = document.getElementById("conditionalDepsModal");
 const conditionalDepsMeta = document.getElementById("conditionalDepsMeta");
 const conditionalDepsList = document.getElementById("conditionalDepsList");
 const conditionalNewChoiceSelect = document.getElementById("conditionalNewChoiceSelect");
-const conditionalAddChoiceBtn = document.getElementById("conditionalAddChoiceBtn");
-const conditionalAddChoiceMeta = document.getElementById("conditionalAddChoiceMeta");
 const cancelConditionalDepsBtn = document.getElementById("cancelConditionalDepsBtn");
 const saveConditionalDepsBtn = document.getElementById("saveConditionalDepsBtn");
 const conditionalWarningModal = document.getElementById("conditionalWarningModal");
@@ -165,6 +165,17 @@ const closeDatenkontextBtn = document.getElementById("closeDatenkontextBtn");
 const saveDatenkontextBtn = document.getElementById("saveDatenkontextBtn");
 const datenkontextStatus = document.getElementById("datenkontextStatus");
 
+const settingsValueListObjId = document.getElementById("settingsValueListObjId");
+const settingsValueListLoadBtn = document.getElementById("settingsValueListLoadBtn");
+const settingsValueListStatus = document.getElementById("settingsValueListStatus");
+const settingsValueListInvokerRow = document.getElementById("settingsValueListInvokerRow");
+const settingsValueListInvokerSelect = document.getElementById("settingsValueListInvokerSelect");
+const settingsConditionalListObjId = document.getElementById("settingsConditionalListObjId");
+const settingsConditionalListLoadBtn = document.getElementById("settingsConditionalListLoadBtn");
+const settingsConditionalListStatus = document.getElementById("settingsConditionalListStatus");
+const settingsConditionalListInvokerRow = document.getElementById("settingsConditionalListInvokerRow");
+const settingsConditionalListInvokerSelect = document.getElementById("settingsConditionalListInvokerSelect");
+
 const expertAttributeName = document.getElementById("expertAttributeName");
 const expertDisplayName = document.getElementById("expertDisplayName");
 const expertShowType = document.getElementById("expertShowType");
@@ -178,7 +189,6 @@ const expertMandatory = document.getElementById("expertMandatory");
 const expertReadonly = document.getElementById("expertReadonly");
 const expertHidden = document.getElementById("expertHidden");
 
-const VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID = "31026762484";
 const TAG_DROPDOWN_VALUES = [
   "DATE",
   "BUTTON_WORKFLOW",
@@ -297,6 +307,14 @@ const appState = {
     selectedEntry: null,
     editContext: null,
   },
+  settings: {
+    valueListObjId: "",
+    valueListInvoker: null,
+    valueListInvokers: [],
+    conditionalListObjId: "",
+    conditionalListInvoker: null,
+    conditionalListInvokers: [],
+  },
 };
 
 const { renderHeaderSection, renderOtherSection, renderFieldTable } = createSectionRenderer({
@@ -379,30 +397,36 @@ function buildNullProfileAttributeOptions(shows) {
 }
 
 function fillAttributeNameDropdown(selectedValue = "") {
-  if (!editAttributeName) return;
+  if (!editAttributeNameWrap) return;
   const selected = String(selectedValue || "");
   const options = appState.nullProfileAttributeOptions || [];
 
-  editAttributeName.innerHTML = "";
+  editAttributeNameWrap.innerHTML = "";
 
   if (!options.length) {
-    const fallback = document.createElement("option");
-    fallback.value = selected;
-    fallback.textContent = selected || "(no nullprofile attributes loaded)";
-    editAttributeName.appendChild(fallback);
-    editAttributeName.value = selected;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = "editAttributeName";
+    input.value = selected;
+    editAttributeNameWrap.appendChild(input);
+    editAttributeName = input;
     return;
   }
+
+  const select = document.createElement("select");
+  select.id = "editAttributeName";
 
   options.forEach((option) => {
     const el = document.createElement("option");
     el.value = option.value;
     el.textContent = option.label;
-    editAttributeName.appendChild(el);
+    select.appendChild(el);
   });
 
   const selectedExists = options.some((option) => option.value === selected);
-  editAttributeName.value = selectedExists ? selected : options[0].value;
+  select.value = selectedExists ? selected : options[0].value;
+  editAttributeNameWrap.appendChild(select);
+  editAttributeName = select;
 }
 
 function syncNullprofileOptions() {
@@ -862,7 +886,7 @@ async function createAndInsertQuickField() {
   if (newIndex >= 0) {
     await openFieldEditor(newIndex);
     if (selectedTag === "SELECT") {
-      promptPopupObjIdCreationIfMissing(nextField, newIndex);
+      await autoCreateValueListForField(nextField, newIndex);
     }
   }
   showCenterNotice(`Feld '${displayName}' wurde hinzugefuegt.`, "info", 2000);
@@ -1556,7 +1580,7 @@ if (presetSelectBtn) {
 
     const idx = appState.selectedFieldIndex;
     const field = idx >= 0 ? appState.shows[idx] : null;
-    promptPopupObjIdCreationIfMissing(field, idx);
+    await autoCreateValueListForField(field, idx);
   });
 }
 
@@ -1770,9 +1794,61 @@ if (editorPreviewDeleteBtn) {
 
 cancelConditionalDepsBtn.addEventListener("click", () => conditionalDepsModal.close());
 saveConditionalDepsBtn.addEventListener("click", applyConditionalDepsSelection);
-if (conditionalAddChoiceBtn) {
-  conditionalAddChoiceBtn.addEventListener("click", () => {
-    void addConditionalChoiceFromSourceValue();
+if (conditionalNewChoiceSelect) {
+  conditionalNewChoiceSelect.addEventListener("change", async () => {
+    const state = appState.conditionalEditor;
+    // Save current checkboxes before switching
+    saveCurrentDepsCheckboxes();
+
+    const selectedLabel = String(conditionalNewChoiceSelect.selectedOptions?.[0]?.textContent || "").trim();
+    if (!selectedLabel) return;
+
+    // Check if this choice already exists in conditional items
+    const existing = state.items.find(
+      (item) => String(item.key || "").trim().toUpperCase() === selectedLabel.toUpperCase()
+    );
+
+    if (existing) {
+      state.selectedKey = existing.key;
+      const selectedItem = state.items.find((item) => item.key === existing.key);
+      setElementText(conditionalDepsMeta, `Choice: ${selectedItem?.objName || existing.key}`);
+      renderDepsCheckboxes(existing.key);
+      return;
+    }
+
+    // Auto-create new conditional choice entry
+    if (!state.listObjId) {
+      showStatus("Keine conditionalValueList gesetzt.", "warning");
+      return;
+    }
+
+    const idx = appState.selectedFieldIndex;
+    const field = idx >= 0 ? appState.shows[idx] : null;
+    if (!field) return;
+
+    try {
+      conditionalNewChoiceSelect.disabled = true;
+      await createPopupEntryViaSdapiFlow(state.listObjId, selectedLabel, selectedLabel);
+      clearObjListLookupCache(state.listObjId);
+      await initConditionalEditorForField(field);
+
+      const matched = appState.conditionalEditor.items.find(
+        (item) => String(item.key || "").trim().toUpperCase() === selectedLabel.toUpperCase()
+      );
+      if (matched) {
+        appState.conditionalEditor.selectedKey = matched.key;
+        conditionalChoiceSelect.value = matched.key;
+      }
+
+      const effectiveKey = appState.conditionalEditor.selectedKey;
+      setElementText(conditionalDepsMeta, `Choice: ${effectiveKey}`);
+      renderDepsCheckboxes(effectiveKey);
+      showCenterNotice(`Choice '${selectedLabel}' wurde hinzugefuegt.`, "info", 1800);
+    } catch (error) {
+      showStatus(`Choice konnte nicht erstellt werden: ${error.message}`, "error");
+    } finally {
+      conditionalNewChoiceSelect.disabled = false;
+    }
   });
 }
 cancelConditionalWarningBtn.addEventListener("click", () => conditionalWarningModal.close());
@@ -1970,10 +2046,13 @@ savePopupEntryBtn.addEventListener("click", async () => {
   }
 });
 
-[editAttributeName, editDisplayName, editPopupType, editPopupObjId, editMandatory, editReadonly, editPersisted].forEach((el) => {
+[editDisplayName, editPopupType, editPopupObjId, editMandatory, editReadonly, editPersisted].forEach((el) => {
   el.addEventListener("input", applyLiveBasicEdit);
   el.addEventListener("change", applyLiveBasicEdit);
 });
+
+editAttributeNameWrap.addEventListener("input", applyLiveBasicEdit);
+editAttributeNameWrap.addEventListener("change", applyLiveBasicEdit);
 
 editFieldJson.addEventListener("input", () => {
   if (editorExpertPane.classList.contains("hidden")) return;
@@ -2140,6 +2219,138 @@ if (saveDatenkontextBtn) {
     }
   });
 }
+
+// -- Settings: invoker configuration -------------------------------------------
+function formatInvokerLabel(invoker) {
+  const label = String(invoker?.presentation?.label || "").trim();
+  const method = String(invoker?.methodName || "").trim();
+  const ref = String(invoker?.reference || "").trim();
+  const parts = [label || method, method && label ? method : "", ref ? `[${ref}]` : ""].filter(Boolean);
+  return parts.join(" — ");
+}
+
+async function loadSettingsInvokers(objIdInput, selectEl, rowEl, statusEl, stateKey) {
+  const objId = String(objIdInput?.value || "").trim();
+  if (!objId || !/^\d+$/.test(objId)) {
+    setElementText(statusEl, "Bitte eine gueltige numerische Object-ID eingeben.");
+    return;
+  }
+
+  setElementText(statusEl, "Lade Menü ...");
+  selectEl.innerHTML = "";
+  rowEl.classList.add("hidden");
+
+  try {
+    const menuPayload = await sdapiClient.fetchMenuForObject(objId);
+    const invokers = findAllInvokers(menuPayload.data);
+    if (!invokers.length) {
+      setElementText(statusEl, "Keine Invoker im Menü dieses Objekts gefunden.");
+      return;
+    }
+
+    appState.settings[stateKey + "ObjId"] = objId;
+    appState.settings[stateKey + "Invokers"] = invokers;
+
+    invokers.forEach((inv, idx) => {
+      const option = document.createElement("option");
+      option.value = String(idx);
+      option.textContent = formatInvokerLabel(inv);
+      selectEl.appendChild(option);
+    });
+
+    rowEl.classList.remove("hidden");
+    appState.settings[stateKey + "Invoker"] = invokers[0];
+    saveSettingsToStorage();
+    setElementText(statusEl, `${invokers.length} Invoker gefunden.`);
+  } catch (error) {
+    setElementText(statusEl, `Fehler beim Laden: ${error.message}`);
+  }
+}
+
+function onSettingsInvokerChange(selectEl, stateKey) {
+  const idx = Number(selectEl.value);
+  const invokers = appState.settings[stateKey + "Invokers"];
+  if (Number.isFinite(idx) && invokers[idx]) {
+    appState.settings[stateKey + "Invoker"] = invokers[idx];
+    saveSettingsToStorage();
+  }
+}
+
+const LS_SETTINGS_VL_OBJ_ID = "tie_settings_valueListObjId";
+const LS_SETTINGS_CL_OBJ_ID = "tie_settings_conditionalListObjId";
+const LS_SETTINGS_VL_INVOKERS = "tie_settings_valueListInvokers";
+const LS_SETTINGS_VL_IDX = "tie_settings_valueListSelectedIdx";
+const LS_SETTINGS_CL_INVOKERS = "tie_settings_conditionalListInvokers";
+const LS_SETTINGS_CL_IDX = "tie_settings_conditionalListSelectedIdx";
+
+function saveSettingsToStorage() {
+  const s = appState.settings;
+  if (s.valueListObjId) localStorage.setItem(LS_SETTINGS_VL_OBJ_ID, s.valueListObjId);
+  if (s.conditionalListObjId) localStorage.setItem(LS_SETTINGS_CL_OBJ_ID, s.conditionalListObjId);
+
+  if (s.valueListInvokers.length) {
+    localStorage.setItem(LS_SETTINGS_VL_INVOKERS, JSON.stringify(s.valueListInvokers));
+    localStorage.setItem(LS_SETTINGS_VL_IDX, String(s.valueListInvokers.indexOf(s.valueListInvoker)));
+  }
+  if (s.conditionalListInvokers.length) {
+    localStorage.setItem(LS_SETTINGS_CL_INVOKERS, JSON.stringify(s.conditionalListInvokers));
+    localStorage.setItem(LS_SETTINGS_CL_IDX, String(s.conditionalListInvokers.indexOf(s.conditionalListInvoker)));
+  }
+}
+
+function restoreSettingsFromStorage() {
+  const vlObjId = localStorage.getItem(LS_SETTINGS_VL_OBJ_ID) || "";
+  const clObjId = localStorage.getItem(LS_SETTINGS_CL_OBJ_ID) || "";
+  if (vlObjId && settingsValueListObjId) settingsValueListObjId.value = vlObjId;
+  if (clObjId && settingsConditionalListObjId) settingsConditionalListObjId.value = clObjId;
+
+  restoreSettingsInvokersFromStorage("valueList", settingsValueListInvokerSelect, settingsValueListInvokerRow, settingsValueListStatus);
+  restoreSettingsInvokersFromStorage("conditionalList", settingsConditionalListInvokerSelect, settingsConditionalListInvokerRow, settingsConditionalListStatus);
+}
+
+function restoreSettingsInvokersFromStorage(stateKey, selectEl, rowEl, statusEl) {
+  const lsInvokers = stateKey === "valueList" ? LS_SETTINGS_VL_INVOKERS : LS_SETTINGS_CL_INVOKERS;
+  const lsIdx = stateKey === "valueList" ? LS_SETTINGS_VL_IDX : LS_SETTINGS_CL_IDX;
+
+  const raw = localStorage.getItem(lsInvokers);
+  if (!raw) return;
+
+  try {
+    const invokers = JSON.parse(raw);
+    if (!Array.isArray(invokers) || !invokers.length) return;
+
+    appState.settings[stateKey + "Invokers"] = invokers;
+
+    selectEl.innerHTML = "";
+    invokers.forEach((inv, idx) => {
+      const option = document.createElement("option");
+      option.value = String(idx);
+      option.textContent = formatInvokerLabel(inv);
+      selectEl.appendChild(option);
+    });
+
+    const selectedIdx = Math.max(0, Number(localStorage.getItem(lsIdx)) || 0);
+    selectEl.value = String(selectedIdx);
+    appState.settings[stateKey + "Invoker"] = invokers[selectedIdx] || invokers[0];
+    rowEl.classList.remove("hidden");
+    setElementText(statusEl, `${invokers.length} Invoker geladen (aus Cache).`);
+  } catch { /* corrupted cache — ignore */ }
+}
+
+settingsValueListLoadBtn.addEventListener("click", () => {
+  loadSettingsInvokers(settingsValueListObjId, settingsValueListInvokerSelect, settingsValueListInvokerRow, settingsValueListStatus, "valueList");
+});
+settingsValueListInvokerSelect.addEventListener("change", () => {
+  onSettingsInvokerChange(settingsValueListInvokerSelect, "valueList");
+});
+settingsConditionalListLoadBtn.addEventListener("click", () => {
+  loadSettingsInvokers(settingsConditionalListObjId, settingsConditionalListInvokerSelect, settingsConditionalListInvokerRow, settingsConditionalListStatus, "conditionalList");
+});
+settingsConditionalListInvokerSelect.addEventListener("change", () => {
+  onSettingsInvokerChange(settingsConditionalListInvokerSelect, "conditionalList");
+});
+
+restoreSettingsFromStorage();
 
 async function postWsapiCall(token, baseUrl, payload) {
   const response = await fetch(`/api/wsapi-call?baseUrl=${encodeURIComponent(baseUrl)}`, {
@@ -2476,13 +2687,12 @@ async function discoverInvokerFromRoot(rootObjId, predicate, traversedMethodName
 }
 
 async function createConditionalValueListForField(field) {
-  const discovery = await discoverCreateValueListInvoker(
-    VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID,
-    ["CREATE_CLI_SPEC_CVL_VALUELIST"]
-  );
-  const createInvoker = discovery.createInvoker;
+  const configuredInvoker = appState.settings.conditionalListInvoker;
+  if (!configuredInvoker) {
+    throw new Error("Kein Invoker für bedingte Felder konfiguriert. Bitte unter Einstellungen konfigurieren.");
+  }
 
-  const invokePayload = await sdapiClient.invokeInvoker(createInvoker);
+  const invokePayload = await sdapiClient.invokeInvoker(configuredInvoker);
   const stepInvoker = findStepInvoker(invokePayload.data);
   if (!stepInvoker || typeof stepInvoker !== "object") {
     throw new Error("StepInvoker fehlt in der Create-Antwort.");
@@ -2508,7 +2718,7 @@ async function createConditionalValueListForField(field) {
 
   return {
     createdObjId,
-    discoverySource: discovery.source,
+    discoverySource: "settings",
   };
 }
 
@@ -2674,7 +2884,8 @@ function findLikelyCreatedValueListObjId(data) {
   walk(data);
   if (created.length) return created[0];
 
-  const candidates = findObjectIdCandidates(data).filter((id) => id !== VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID);
+  const rootObjId = appState.settings.valueListObjId || appState.settings.conditionalListObjId || "";
+  const candidates = findObjectIdCandidates(data).filter((id) => id !== rootObjId);
   return candidates[0] || "";
 }
 
@@ -2714,19 +2925,74 @@ function renderValueListCreateFields(parameters) {
   });
 }
 
+async function autoCreateValueListForField(field, fieldIndex) {
+  if (!field) return;
+
+  const popupObjId = String(field.popupObjId || "").trim();
+  if (/^\d+$/.test(popupObjId)) return;
+
+  const configuredInvoker = appState.settings.valueListInvoker;
+  if (!configuredInvoker) {
+    showCenterNotice("Bitte zuerst unter Einstellungen einen Invoker fuer Wertelisten konfigurieren.", "warn", 3500);
+    return;
+  }
+
+  const profileName = extractProfileName(appState.invokeData);
+  const profileId = appState.invokeData?.attributeProfile?.id
+    ?? appState.stepInvokerTemplate?.objId
+    ?? appState.selectedAttributeProfileInvoker?.objId
+    ?? "";
+  const valueListName = `Auswahlliste - ${profileName} - ${profileId}`;
+
+  try {
+    showStatus("Erstelle Auswahlliste …", "info");
+
+    const invokePayload = await sdapiClient.invokeInvoker(configuredInvoker);
+    const stepInvoker = findStepInvoker(invokePayload.data);
+    if (!stepInvoker || typeof stepInvoker !== "object") {
+      throw new Error("StepInvoker fehlt in der Create-Antwort.");
+    }
+
+    const attributeValues = findAttributeValues(invokePayload.data);
+    const parametersTemplate = attributeValues && typeof attributeValues === "object"
+      ? JSON.parse(JSON.stringify(attributeValues))
+      : JSON.parse(JSON.stringify(stepInvoker.parameters || {}));
+
+    const filledParameters = fillValueListCreateParameters(parametersTemplate, field, valueListName);
+
+    const payload = { ...JSON.parse(JSON.stringify(stepInvoker)), parameters: filledParameters };
+    const submitPayload = await sdapiClient.submitStep(payload, "/{objId}/{activityId}/{parentId}/step");
+
+    const createdObjId = findLikelyCreatedValueListObjId(submitPayload?.data);
+    if (createdObjId && appState.selectedFieldIndex === fieldIndex) {
+      editPopupObjId.value = createdObjId;
+      applyLiveBasicEdit();
+    }
+
+    showCenterNotice(
+      createdObjId
+        ? `Auswahlliste erstellt (${createdObjId}).`
+        : "Auswahlliste erstellt.",
+      "info",
+      2500,
+    );
+  } catch (error) {
+    showStatus(`Auswahlliste konnte nicht erstellt werden: ${error.message}`, "error");
+  }
+}
+
 async function openValueListCreateDialogForField(fieldIndex) {
   const field = appState.shows[fieldIndex];
   if (!field) return;
 
-  setElementText(valueListCreateMeta, `Lade Create-Template aus Ordner ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} ...`);
+  const configuredInvoker = appState.settings.valueListInvoker;
+  if (!configuredInvoker) {
+    throw new Error("Kein Invoker für Wertelisten konfiguriert. Bitte unter Einstellungen konfigurieren.");
+  }
 
-  const discovery = await discoverCreateValueListInvoker(
-    VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID,
-    ["CREATE_CLI_SPEC_VALUELIST"]
-  );
-  const createInvoker = discovery.createInvoker;
+  setElementText(valueListCreateMeta, "Lade Create-Template ...");
 
-  const invokePayload = await sdapiClient.invokeInvoker(createInvoker);
+  const invokePayload = await sdapiClient.invokeInvoker(configuredInvoker);
   const stepInvoker = findStepInvoker(invokePayload.data);
   if (!stepInvoker || typeof stepInvoker !== "object") {
     throw new Error("StepInvoker fehlt in der Create-Antwort.");
@@ -2739,14 +3005,15 @@ async function openValueListCreateDialogForField(fieldIndex) {
 
   appState.valueListCreation = {
     fieldIndex,
-    createInvoker,
+    createInvoker: configuredInvoker,
     stepInvokerTemplate: JSON.parse(JSON.stringify(stepInvoker)),
     parametersTemplate,
     responseData: invokePayload.data,
   };
 
   const fieldName = String(field.displayName || field.attributeName || "(ohne Name)");
-  setElementText(valueListCreateMeta, `Feld: ${fieldName} | Ordner: ${VALUE_LIST_TEMPLATE_FOLDER_OBJ_ID} | Quelle: ${discovery.source}`);
+  const invokerLabel = formatInvokerLabel(configuredInvoker);
+  setElementText(valueListCreateMeta, `Feld: ${fieldName} | Invoker: ${invokerLabel}`);
   renderValueListCreateFields(parametersTemplate);
   valueListCreateModal.showModal();
 }
@@ -2830,61 +3097,12 @@ async function initConditionalEditorForField(field) {
   refreshConditionalTagPrefControls(field);
 }
 
-async function openConditionalDepsModal() {
+function renderDepsCheckboxes(key) {
   const state = appState.conditionalEditor;
-  const selectedKey = conditionalChoiceSelect.value;
-  state.selectedKey = selectedKey;
   conditionalDepsList.innerHTML = "";
+  if (!key) return;
 
-  const idx = appState.selectedFieldIndex;
-  const field = idx >= 0 ? appState.shows[idx] : null;
-  const popupObjId = String(field?.popupObjId || "").trim();
-
-  if (conditionalNewChoiceSelect) {
-    conditionalNewChoiceSelect.innerHTML = "";
-  }
-  state.sourceOptions = [];
-
-  if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
-  setElementText(conditionalAddChoiceMeta, "");
-
-  if (popupObjId && /^\d+$/.test(popupObjId)) {
-    try {
-      const sourceOptions = await loadValueList(popupObjId);
-      state.sourceOptions = Array.isArray(sourceOptions) ? sourceOptions : [];
-      if (conditionalNewChoiceSelect) {
-        state.sourceOptions.forEach((option) => {
-          const entry = document.createElement("option");
-          entry.value = String(option.value || option.label || "");
-          entry.textContent = String(option.label || option.value || "");
-          conditionalNewChoiceSelect.appendChild(entry);
-        });
-      }
-      if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = !state.sourceOptions.length;
-      setElementText(
-        conditionalAddChoiceMeta,
-        state.sourceOptions.length
-          ? "Wert aus Dropdown waehlen und als neuen Conditional Choice uebernehmen."
-          : "Im Dropdown sind keine Werte verfuegbar.",
-      );
-    } catch (error) {
-      setElementText(conditionalAddChoiceMeta, `Dropdown-Werte konnten nicht geladen werden: ${error.message}`);
-      if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
-    }
-  } else {
-    setElementText(conditionalAddChoiceMeta, "popupObjId fehlt. Bitte zuerst eine Auswahlliste konfigurieren.");
-  }
-
-  if (!selectedKey) {
-    setElementText(conditionalDepsMeta, "Select a choice first.");
-    conditionalDepsModal.showModal();
-    return;
-  }
-
-  const selectedItem = state.items.find((item) => item.key === selectedKey);
-  setElementText(conditionalDepsMeta, `Choice: ${selectedItem?.objName || selectedKey}`);
-
-  const selectedDeps = new Set(state.dependenciesByKey[selectedKey] || []);
+  const selectedDeps = new Set(state.dependenciesByKey[key] || []);
   const attributeOptions = getProfileAttributeOptions();
 
   attributeOptions.forEach((option) => {
@@ -2900,75 +3118,84 @@ async function openConditionalDepsModal() {
     row.appendChild(document.createTextNode(` ${option.label} (${option.key})`));
     conditionalDepsList.appendChild(row);
   });
-
-  conditionalDepsModal.showModal();
 }
 
-async function addConditionalChoiceFromSourceValue() {
+function saveCurrentDepsCheckboxes() {
   const state = appState.conditionalEditor;
-  if (!state.listObjId) {
-    showStatus("Keine conditionalValueList gesetzt.", "warning");
-    return;
-  }
-
-  const selectedLabel = String(conditionalNewChoiceSelect?.selectedOptions?.[0]?.textContent || "").trim();
-  if (!selectedLabel) {
-    showStatus("Bitte zuerst einen Dropdown-Wert waehlen.", "warning");
-    return;
-  }
-
-  const existing = state.items.find((item) => String(item.key || "").trim().toUpperCase() === selectedLabel.toUpperCase());
-  if (existing) {
-    state.selectedKey = existing.key;
-    conditionalChoiceSelect.value = existing.key;
-    await openConditionalDepsModal();
-    return;
-  }
-
-  const idx = appState.selectedFieldIndex;
-  const field = idx >= 0 ? appState.shows[idx] : null;
-  if (!field) return;
-
-  try {
-    if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = true;
-    await createPopupEntryViaSdapiFlow(state.listObjId, selectedLabel, selectedLabel);
-    clearObjListLookupCache(state.listObjId);
-    await initConditionalEditorForField(field);
-
-    const matched = appState.conditionalEditor.items.find(
-      (item) => String(item.key || "").trim().toUpperCase() === selectedLabel.toUpperCase()
-    );
-    if (matched) {
-      appState.conditionalEditor.selectedKey = matched.key;
-      conditionalChoiceSelect.value = matched.key;
-    }
-
-    await openConditionalDepsModal();
-    showCenterNotice(`Choice '${selectedLabel}' wurde hinzugefuegt.`, "info", 1800);
-  } catch (error) {
-    showStatus(`Choice konnte nicht erstellt werden: ${error.message}`, "error");
-  } finally {
-    if (conditionalAddChoiceBtn) conditionalAddChoiceBtn.disabled = false;
-  }
-}
-
-function applyConditionalDepsSelection() {
-  const state = appState.conditionalEditor;
-  const selectedKey = state.selectedKey;
-  if (!selectedKey) return;
+  const currentKey = state.selectedKey;
+  if (!currentKey) return;
 
   const checked = Array.from(conditionalDepsList.querySelectorAll("input[type='checkbox']:checked"))
     .map((input) => normalizeAttributeKey(input.value))
     .filter(Boolean);
 
-  state.dependenciesByKey[selectedKey] = checked;
-  const original = state.originalDependenciesByKey[selectedKey] || [];
+  state.dependenciesByKey[currentKey] = checked;
+  const original = state.originalDependenciesByKey[currentKey] || [];
   if (areDependenciesEqual(original, checked)) {
-    state.dirtyKeys.delete(selectedKey);
+    state.dirtyKeys.delete(currentKey);
   } else {
-    state.dirtyKeys.add(selectedKey);
+    state.dirtyKeys.add(currentKey);
+  }
+}
+
+async function openConditionalDepsModal() {
+  const state = appState.conditionalEditor;
+  const selectedKey = conditionalChoiceSelect.value;
+  state.selectedKey = selectedKey;
+  conditionalDepsList.innerHTML = "";
+
+  const idx = appState.selectedFieldIndex;
+  const field = idx >= 0 ? appState.shows[idx] : null;
+  const popupObjId = String(field?.popupObjId || "").trim();
+
+  if (conditionalNewChoiceSelect) {
+    conditionalNewChoiceSelect.innerHTML = "";
+  }
+  state.sourceOptions = [];
+
+  if (popupObjId && /^\d+$/.test(popupObjId)) {
+    try {
+      const sourceOptions = await loadValueList(popupObjId);
+      state.sourceOptions = Array.isArray(sourceOptions) ? sourceOptions : [];
+      if (conditionalNewChoiceSelect) {
+        state.sourceOptions.forEach((option) => {
+          const entry = document.createElement("option");
+          entry.value = String(option.value || option.label || "");
+          entry.textContent = String(option.label || option.value || "");
+          conditionalNewChoiceSelect.appendChild(entry);
+        });
+      }
+    } catch (error) {
+      setElementText(conditionalDepsMeta, `Dropdown-Werte konnten nicht geladen werden: ${error.message}`);
+    }
   }
 
+  // Pre-select the current choice in the dropdown if it exists
+  if (selectedKey && conditionalNewChoiceSelect) {
+    const matchOption = Array.from(conditionalNewChoiceSelect.options).find(
+      (opt) => opt.value.trim().toUpperCase() === selectedKey.trim().toUpperCase()
+    );
+    if (matchOption) {
+      conditionalNewChoiceSelect.value = matchOption.value;
+    }
+  }
+
+  // If no selectedKey but options exist, pick the first one
+  const effectiveKey = selectedKey || (conditionalNewChoiceSelect?.value || "");
+  if (effectiveKey) {
+    state.selectedKey = effectiveKey;
+    const selectedItem = state.items.find((item) => item.key === effectiveKey);
+    setElementText(conditionalDepsMeta, `Choice: ${selectedItem?.objName || effectiveKey}`);
+    renderDepsCheckboxes(effectiveKey);
+  } else {
+    setElementText(conditionalDepsMeta, "");
+  }
+
+  conditionalDepsModal.showModal();
+}
+
+function applyConditionalDepsSelection() {
+  saveCurrentDepsCheckboxes();
   conditionalDepsModal.close();
   updateConditionalChoiceMeta();
 }
@@ -3433,8 +3660,11 @@ function attachSelectPreview(card, show) {
         .map((item) => `<option value="${esc(item.value)}" data-objid="${esc(item.objId)}">${esc(item.label)}</option>`)
         .join("");
 
-      const currentValue = appState.previewValues[normalizeAttributeKey(show.attributeName)];
+      const key = normalizeAttributeKey(show.attributeName);
+      const currentValue = appState.previewValues[key];
       const defaultValue = String(show.defaultValue ?? "").trim();
+      const wasAlreadySet = !!currentValue;
+
       if (currentValue && typeof currentValue === "object" && currentValue.value) {
         sel.value = currentValue.value;
       } else if (typeof currentValue === "string" && currentValue) {
@@ -3446,11 +3676,19 @@ function attachSelectPreview(card, show) {
         );
         if (match) {
           sel.value = match.value;
-          appState.previewValues[normalizeAttributeKey(show.attributeName)] = {
-            value: match.value,
-            label: match.label,
-          };
+          appState.previewValues[key] = { value: match.value, label: match.label };
+        } else {
+          // defaultValue didn't match any option — fall back to first item
+          appState.previewValues[key] = { value: items[0].value, label: items[0].label };
         }
+      } else {
+        // No prior value and no defaultValue — initialize to the browser-selected first item
+        appState.previewValues[key] = { value: items[0].value, label: items[0].label };
+      }
+
+      // If previewValues was unset before, apply conditional visibility now
+      if (!wasAlreadySet && appState.invokeData) {
+        renderProfile(appState.invokeData);
       }
     })
     .catch(() => {

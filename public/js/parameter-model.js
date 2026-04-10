@@ -60,10 +60,10 @@ export function fillCreateEntryStepParameters(parameters, value, description) {
   return { parameters: result, updatedKeys: Array.from(new Set(updatedKeys)) };
 }
 
-export function fillValueListCreateParameters(parameters, field) {
+export function fillValueListCreateParameters(parameters, field, customName) {
   const result = JSON.parse(JSON.stringify(parameters || {}));
-  const baseName = String(field?.displayName || field?.attributeName || "Conditional Value List").trim();
-  const description = `${baseName} conditionalValueList`;
+  const baseName = customName || String(field?.displayName || field?.attributeName || "Conditional Value List").trim();
+  const description = customName || `${baseName} conditionalValueList`;
 
   const namePatterns = [/bezeichnung/i, /anzeigewert/i, /obj_name/i, /(^|\.)name(\[|$)/i];
   const descriptionPatterns = [/beschreibung/i, /description/i, /descr/i];

@@ -474,6 +474,7 @@ export function createBodyGridRenderer({
       });
     });
 
+    requestAnimationFrame(() => {
     const coveredCols = new Set();
     for (let c = 1; c <= usedCols; c++) {
       if (coveredCols.has(c)) continue;
@@ -501,30 +502,37 @@ export function createBodyGridRenderer({
     }
 
     const coveredRows = new Set();
-    for (let r = 1; r <= usedRows; r++) {
+    for (let r = 1; r <= rows; r++) {
       if (coveredRows.has(r)) continue;
 
       const target = outerRenderedItems
         .filter((item) => item.rect.top <= r && item.rect.bottom >= r)
         .sort((a, b) => (a.rect.left - b.rect.left) || (a.rect.top - b.rect.top))[0];
 
-      if (!target?.element) continue;
+      const anchor = target?.element
+        || formGrid.querySelector(`.grid-ghost-cell[data-vpos="${r}"]`);
+      if (!anchor) continue;
 
       const btn = documentRef.createElement("button");
       btn.className = "grid-edge-btn grid-remove-btn grid-remove-left";
       btn.type = "button";
       btn.title = "Remove row and its content";
       btn.textContent = "−";
-      btn.style.left = `${target.element.offsetLeft - 36}px`;
-      btn.style.top = `${target.element.offsetTop}px`;
-      btn.style.height = `${target.element.offsetHeight}px`;
+      btn.style.left = `${anchor.offsetLeft - 36}px`;
+      btn.style.top = `${anchor.offsetTop}px`;
+      btn.style.height = `${anchor.offsetHeight}px`;
       btn.addEventListener("click", () => onRemoveBodyRow(r));
       formGrid.appendChild(btn);
 
-      for (let covered = target.rect.top; covered <= target.rect.bottom; covered += 1) {
-        coveredRows.add(covered);
+      if (target) {
+        for (let covered = target.rect.top; covered <= target.rect.bottom; covered += 1) {
+          coveredRows.add(covered);
+        }
+      } else {
+        coveredRows.add(r);
       }
     }
+    }); // end requestAnimationFrame
 
     for (let r = 1; r <= rows; r++) {
       const btn = documentRef.createElement("button");
