@@ -354,6 +354,16 @@ h2 {
   margin-bottom: 0.5rem;
 }
 
+/* ── Section grid (HEADER / OTHER, hpos/vpos) ────────────────────────────── */
+.section-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  margin-left: 2rem;
+  position: relative;
+}
+
 /* ── Form grid (BODY, hpos/vpos) ──────────────────────────────────────────── */
 .form-grid {
   display: grid;

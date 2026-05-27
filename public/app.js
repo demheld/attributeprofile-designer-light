@@ -325,6 +325,8 @@ const { renderHeaderSection, renderOtherSection, renderFieldTable } = createSect
   onOpenEditor: openFieldEditor,
   onInsertField: insertFieldForCard,
   onRemoveField: removeFieldFromProfile,
+  onRemoveRow: removeSectionRow,
+  onRemoveColumn: removeSectionColumn,
   getShows: () => appState.shows,
   getTableSort: () => appState.tableSort,
 });
@@ -692,8 +694,9 @@ async function refreshEditorSelectPreview(field) {
         };
       }
     }
-  } catch {
-    editorPreviewSelect.innerHTML = '<option>(error loading)</option>';
+  } catch (err) {
+    console.error('[refreshEditorSelectPreview] loadValueList failed', { popupObjId, err });
+    editorPreviewSelect.innerHTML = `<option>(error: ${esc(err?.message || 'unknown')})</option>`;
   }
 }
 
@@ -1227,6 +1230,48 @@ function removeBodyColumn(colNumber) {
 
   const currentCols = Math.max(1, Number(appState.manualBodyCols || appState.formGridCols || 1));
   appState.manualBodyCols = Math.max(1, currentCols - 1);
+  renderProfile(appState.invokeData);
+}
+
+function removeSectionRow(showType, rowNumber) {
+  if (!appState.invokeData) return;
+  const showsTarget = resolveShowsArrayTarget(appState.invokeData);
+  if (!showsTarget) return;
+
+  const typeUpper = String(showType || "").toUpperCase();
+  const fields = showsTarget.filter((s) => String(s.showType || "").toUpperCase() === typeUpper);
+
+  fields.forEach((field) => {
+    const rect = getFieldRect(field);
+    if (rect.top <= rowNumber && rect.bottom >= rowNumber) {
+      const idx = showsTarget.indexOf(field);
+      if (idx >= 0) showsTarget.splice(idx, 1);
+    } else if (rect.top > rowNumber) {
+      field.vpos = rect.top - 1;
+    }
+  });
+
+  renderProfile(appState.invokeData);
+}
+
+function removeSectionColumn(showType, colNumber) {
+  if (!appState.invokeData) return;
+  const showsTarget = resolveShowsArrayTarget(appState.invokeData);
+  if (!showsTarget) return;
+
+  const typeUpper = String(showType || "").toUpperCase();
+  const fields = showsTarget.filter((s) => String(s.showType || "").toUpperCase() === typeUpper);
+
+  fields.forEach((field) => {
+    const rect = getFieldRect(field);
+    if (rect.left <= colNumber && rect.right >= colNumber) {
+      const idx = showsTarget.indexOf(field);
+      if (idx >= 0) showsTarget.splice(idx, 1);
+    } else if (rect.left > colNumber) {
+      field.hpos = rect.left - 1;
+    }
+  });
+
   renderProfile(appState.invokeData);
 }
 
@@ -3308,18 +3353,26 @@ function extractValueListItems(data) {
   const results = [];
 
   function getEntryLabel(item, attrNames) {
+    // Prefer SYS_OBJECT.OBJ_NAME over OBJ_ID
+    if (item.objName !== undefined && item.objName !== null && String(item.objName).trim()) {
+      return String(item.objName).trim();
+    }
+
     const headers = Array.isArray(attrNames) ? attrNames.map((name) => String(name || "").trim().toLowerCase()) : [];
     const values = Array.isArray(item.attrValues) ? item.attrValues : [];
-    const preferredKeys = ["bezeichnung", "anzeigewert", "displayvalue", "name"];
+    const preferredKeys = [
+      "sys_object.obj_name",
+      "obj_name",
+      "bezeichnung",
+      "anzeigewert",
+      "displayvalue",
+      "name",
+    ];
     const preferredIndex = headers.findIndex((name) => preferredKeys.includes(name));
 
     if (preferredIndex >= 0 && values[preferredIndex] !== undefined && values[preferredIndex] !== null && String(values[preferredIndex]).trim()) {
       return String(values[preferredIndex]).trim();
     }
-    if (values[1] !== undefined && values[1] !== null && String(values[1]).trim()) {
-      return String(values[1]).trim();
-    }
-    if (item.objName) return String(item.objName).trim();
     if (item.displayValue) return String(item.displayValue).trim();
     if (item.internalValue) return String(item.internalValue).trim();
     return "";
@@ -3335,8 +3388,8 @@ function extractValueListItems(data) {
     if (String(node.t || "").toUpperCase() === "OBJLIST" && Array.isArray(node.items)) {
       const attrNames = Array.isArray(node.attrNames) ? node.attrNames : [];
       node.items.forEach((item) => {
-        const isValueList = String(item?.objclass?.type || "").toUpperCase() === "VALUE_LIST";
-        if (!isValueList) return;
+        // Accept any item in the OBJLIST that has a label, not only VALUE_LIST
+        // (the popup-list root may expose its entries under a different objclass).
         const label = getEntryLabel(item, attrNames);
         if (!label) return;
         results.push({
@@ -3365,6 +3418,7 @@ function extractValueListItems(data) {
   }
 
   walk(data);
+  console.debug("[extractValueListItems] parsed", { itemCount: results.length, raw: data });
   return results;
 }
 
@@ -3691,8 +3745,9 @@ function attachSelectPreview(card, show) {
         renderProfile(appState.invokeData);
       }
     })
-    .catch(() => {
-      sel.innerHTML = '<option>(error loading)</option>';
+    .catch((err) => {
+      console.error('[attachSelectPreview] loadValueList failed', { popupObjId: show.popupObjId, err });
+      sel.innerHTML = `<option>(error: ${esc(err?.message || 'unknown')})</option>`;
     });
 }
 

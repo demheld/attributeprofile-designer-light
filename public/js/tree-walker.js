@@ -2,45 +2,56 @@ export function normalizeMethodName(name) {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, "");
 }
 
-function walkTree(node, visit) {
+function walkTree(node, visit, ignoreKeys) {
   if (!node || typeof node !== "object") return;
   visit(node);
 
   if (Array.isArray(node)) {
-    node.forEach((item) => walkTree(item, visit));
+    node.forEach((item) => walkTree(item, visit, ignoreKeys));
     return;
   }
 
-  Object.values(node).forEach((value) => {
-    if (value && typeof value === "object") {
-      walkTree(value, visit);
-    }
+  Object.entries(node).forEach(([key, value]) => {
+    if (!value || typeof value !== "object") return;
+    if (ignoreKeys && ignoreKeys.has(key)) return;
+    walkTree(value, visit, ignoreKeys);
   });
 }
 
-function findFirstInTree(node, predicate) {
+function findFirstInTree(node, predicate, ignoreKeys) {
   if (!node || typeof node !== "object") return null;
   if (predicate(node)) return node;
 
   if (Array.isArray(node)) {
     for (const item of node) {
-      const found = findFirstInTree(item, predicate);
+      const found = findFirstInTree(item, predicate, ignoreKeys);
       if (found) return found;
     }
     return null;
   }
 
-  for (const value of Object.values(node)) {
+  for (const [key, value] of Object.entries(node)) {
     if (!value || typeof value !== "object") continue;
-    const found = findFirstInTree(value, predicate);
+    if (ignoreKeys && ignoreKeys.has(key)) continue;
+    const found = findFirstInTree(value, predicate, ignoreKeys);
     if (found) return found;
   }
 
   return null;
 }
 
+// `data.path[*].invokers` contains invokers belonging to ancestor objects
+// (breadcrumb of semantically higher menus) and must not be used. Skip the
+// `path` subtree entirely; `data.invokers` and `data.submenus[*].invokers`
+// are still visited normally.
+const INVOKER_IGNORE_KEYS = new Set(["path"]);
+
 export function findInvoker(data, methodName) {
-  return findFirstInTree(data, (node) => node.methodName === methodName);
+  return findFirstInTree(
+    data,
+    (node) => node.methodName === methodName,
+    INVOKER_IGNORE_KEYS
+  );
 }
 
 export function findStepInvoker(data) {
@@ -74,7 +85,7 @@ export function findInvokerByMethods(data, candidates) {
   return findFirstInTree(data, (node) => {
     const methodName = normalizeMethodName(node.methodName);
     return methodName && wanted.includes(methodName);
-  });
+  }, INVOKER_IGNORE_KEYS);
 }
 
 export function findCreateValueListInvoker(data, allowedReferences = ["CREATE_CLI_SPEC_VALUELIST"]) {
@@ -83,11 +94,11 @@ export function findCreateValueListInvoker(data, allowedReferences = ["CREATE_CL
     const methodName = normalizeMethodName(node.methodName);
     const reference = String(node.reference || "").trim().toUpperCase();
     return methodName === normalizeMethodName("Object.Create()") && allowed.has(reference);
-  });
+  }, INVOKER_IGNORE_KEYS);
 }
 
 export function findInvokerByPredicate(data, predicate) {
-  return findFirstInTree(data, predicate);
+  return findFirstInTree(data, predicate, INVOKER_IGNORE_KEYS);
 }
 
 export function findInvokersByMethodsAll(data, candidates) {
@@ -100,7 +111,7 @@ export function findInvokersByMethodsAll(data, candidates) {
     if (methodName && wanted.includes(methodName)) {
       found.push(node);
     }
-  });
+  }, INVOKER_IGNORE_KEYS);
 
   return found;
 }
@@ -113,7 +124,7 @@ export function findAllInvokers(data) {
     if (node.t === "Invoker" && node.methodName) {
       found.push(node);
     }
-  });
+  }, INVOKER_IGNORE_KEYS);
 
   return found;
 }

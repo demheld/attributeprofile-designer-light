@@ -16,7 +16,7 @@ tagPrefs parsed → conditionalValueList reference found
   → buildConditionalVisibility(shows) uses:
       - cached rules (key → [target attributeNames])
       - current dropdown selection from appState.previewValues
-    → returns isVisible(show) filter function
+    → returns isVisible(show) filter functionz
   → renderProfile filters shows through isVisible
 ```
 
